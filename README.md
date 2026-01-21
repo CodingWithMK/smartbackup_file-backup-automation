@@ -1,5 +1,3 @@
-# 📄 README.md - User-Friendly & Professional
-
 <div align="center">
 
 # 🔄 SmartBackup
