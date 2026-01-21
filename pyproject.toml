@@ -1,0 +1,82 @@
+[project]
+name = "smartbackup"
+version = "0.1.0"
+description = "Intelligent cross-platform backup system for developers with automatic filtering of build artifacts"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Muhammed Musab Kaya", email = "" }
+]
+keywords = [
+    "backup",
+    "automation",
+    "developer-tools",
+    "cross-platform",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Archiving :: Backup",
+    "Topic :: Utilities",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "pytest>=8.4.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/smartbackup_file-backup-automation"
+Repository = "https://github.com/yourusername/smartbackup_file-backup-automation"
+Issues = "https://github.com/yourusername/smartbackup_file-backup-automation/issues"
+
+[project.scripts]
+smartbackup = "smartbackup:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Important: Tell hatch where to find the package (src layout)
+[tool.hatch.build.targets.wheel]
+packages = ["src/smartbackup"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/LICENSE",
+    "/README.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]  # Important: Add src to Python path for tests
+addopts = ["-v", "--tb=short"]
+markers = [
+    "slow: marks tests as slow",
+]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP"]
+ignore = ["E501"]
