@@ -1,6 +1,5 @@
 # 📄 README.md - User-Friendly & Professional
 
-```markdown
 <div align="center">
 
 # 🔄 SmartBackup
