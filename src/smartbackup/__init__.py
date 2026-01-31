@@ -9,25 +9,40 @@ Quick Start:
     # From command line
     $ smartbackup
     $ python -m smartbackup
-    
+
     # From Python
     >>> from smartbackup import SmartBackup
     >>> backup = SmartBackup()
     >>> backup.run()
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Muhammed Musab Kaya - @CodingWithMK"
 __license__ = "MIT"
 
-from smartbackup.smart_backup import (
-    SmartBackup,
-    BackupConfig,
-    BackupResult,
-    BackupLogger,
-    PathResolver,
-    main,
+# Import from new modular structure
+from smartbackup.backup import SmartBackup
+from smartbackup.cli import main
+from smartbackup.config import BackupConfig, ConfigManager, DEFAULT_EXCLUSIONS, EXCLUDED_EXTENSIONS
+from smartbackup.core.detector import ChangeDetector
+from smartbackup.core.engine import BackupEngine, DryRunBackupEngine
+from smartbackup.core.restore import ConflictResolution, RestoreEngine, RestoreResult
+from smartbackup.core.scanner import ExclusionFilter, FileScanner
+from smartbackup.handlers import FallbackHandler
+from smartbackup.manifest import (
+    JsonManifestManager,
+    Manifest,
+    ManifestDiff,
+    ManifestEntry,
+    ManifestFormat,
+    ManifestManager,
 )
+from smartbackup.models import BackupResult, FileAction, FileInfo
+from smartbackup.platform.devices import DeviceDetector
+from smartbackup.platform.resolver import PathResolver
+from smartbackup.platform.scheduler import SchedulerHelper
+from smartbackup.ui.colors import Colors
+from smartbackup.ui.logger import BackupLogger
 
 __all__ = [
     # Version info
@@ -36,19 +51,40 @@ __all__ = [
     "__license__",
     # Main class
     "SmartBackup",
-    # Config and result
+    # Config and constants
     "BackupConfig",
-    "BackupResult",
-    # Utilities
-    "BackupLogger",
-    "PathResolver",
-    "DeviceDetector",
     "ConfigManager",
+    "DEFAULT_EXCLUSIONS",
+    "EXCLUDED_EXTENSIONS",
+    # Models
+    "BackupResult",
+    "FileInfo",
+    "FileAction",
     # Core components
     "BackupEngine",
+    "DryRunBackupEngine",
     "FileScanner",
-    "ChangeDetector",
     "ExclusionFilter",
+    "ChangeDetector",
+    "RestoreEngine",
+    "RestoreResult",
+    "ConflictResolution",
+    # Manifest
+    "Manifest",
+    "ManifestEntry",
+    "ManifestDiff",
+    "ManifestFormat",
+    "ManifestManager",
+    "JsonManifestManager",
+    # Platform
+    "PathResolver",
+    "DeviceDetector",
+    "SchedulerHelper",
+    # UI
+    "BackupLogger",
+    "Colors",
+    # Handlers
+    "FallbackHandler",
     # Entry point
     "main",
 ]

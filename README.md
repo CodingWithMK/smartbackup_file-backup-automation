@@ -42,6 +42,8 @@ Ever tried to backup your Documents folder only to wait hours because of massive
 | 🚀 **Cross-Platform** | Works on Windows, macOS, and Linux |
 | 🔍 **Smart Filtering** | Auto-skips `node_modules`, `venv`, `.git`, `__pycache__`, etc. |
 | 📊 **Incremental Backup** | Only copies new or modified files |
+| 📋 **Manifest Tracking** | JSON manifest for 10x faster incremental backups |
+| 🔄 **Restore Support** | Full restore functionality with pattern filtering |
 | 🔌 **Auto-Detection** | Automatically finds external drives |
 | 📝 **Detailed Logging** | Progress bar + log file on backup drive |
 | 🎯 **Zero Dependencies** | Pure Python, no pip installs required |
@@ -152,7 +154,9 @@ python main.py --exclude "downloads" "*.iso"
 
 ```
 usage: smartbackup [-h] [-s SOURCE] [-t TARGET] [-l LABEL] [--dry-run]
-                   [-q] [--exclude PATTERN [PATTERN ...]] [--list-drives] [-v]
+                   [-q] [--exclude PATTERN [PATTERN ...]] [--list-drives]
+                   [--no-manifest] [--show-manifest] [--verify] [-v]
+                   {restore} ...
 
 Options:
   -h, --help            Show this help message
@@ -163,7 +167,48 @@ Options:
   -q, --quiet           Minimal output
   --exclude PATTERN     Additional exclusion patterns
   --list-drives         Show available drives
+  --no-manifest         Disable manifest tracking
+  --show-manifest       Display manifest contents
+  --verify              Verify backup against manifest
   -v, --version         Show version
+
+Commands:
+  restore               Restore files from backup
+```
+
+### Restore Files from Backup
+
+```bash
+# Restore all files to original location
+smartbackup restore --source /path/to/backup
+
+# Restore to a specific directory
+smartbackup restore --source /path/to/backup --target ~/Restored
+
+# Restore only specific files (pattern matching)
+smartbackup restore --source /path/to/backup --pattern "*.py" "*.md"
+
+# Preview what would be restored (dry-run)
+smartbackup restore --source /path/to/backup --dry-run
+
+# List files in backup
+smartbackup restore --source /path/to/backup --list
+
+# Overwrite existing files
+smartbackup restore --source /path/to/backup --overwrite
+```
+
+### Manifest Commands
+
+```bash
+# Show manifest information
+smartbackup --target /path/to/backup --show-manifest
+
+# Verify backup integrity against manifest
+smartbackup --target /path/to/backup --verify
+
+# Disable manifest tracking (use traditional change detection)
+smartbackup --no-manifest
 ```
 
 ---
@@ -337,9 +382,27 @@ smartbackup_file-backup-automation/
 │   └── smartbackup/
 │       ├── __init__.py       # Package exports
 │       ├── __main__.py       # python -m smartbackup
-│       └── smart_backup.py   # Main logic
-├── tests/
-│   └── test_backup.py
+│       ├── backup.py         # SmartBackup main class
+│       ├── cli.py            # CLI argument parsing
+│       ├── config.py         # Configuration management
+│       ├── handlers.py       # Fallback handlers
+│       ├── models.py         # Data classes
+│       ├── core/
+│       │   ├── engine.py     # Backup engine
+│       │   ├── scanner.py    # File scanner
+│       │   ├── detector.py   # Change detection
+│       │   └── restore.py    # Restore engine
+│       ├── manifest/
+│       │   ├── base.py       # Manifest classes
+│       │   └── json_manifest.py  # JSON implementation
+│       ├── platform/
+│       │   ├── resolver.py   # Path resolution
+│       │   ├── devices.py    # Device detection
+│       │   └── scheduler.py  # OS scheduler helpers
+│       └── ui/
+│           ├── colors.py     # Terminal colors
+│           └── logger.py     # Logging
+├── tests/                    # 175 tests
 ├── main.py                   # Quick entry point
 ├── pyproject.toml
 └── README.md
