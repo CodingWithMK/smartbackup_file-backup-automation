@@ -1,6 +1,6 @@
 [project]
 name = "smartbackup"
-version = "0.2.0"
+version = "0.2.1"
 description = "Intelligent cross-platform backup system for developers with automatic filtering of build artifacts"
 readme = "README.md"
 license = { text = "MIT" }
