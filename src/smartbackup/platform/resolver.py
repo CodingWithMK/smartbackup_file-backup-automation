@@ -155,7 +155,7 @@ class PathResolver:
         excluded_names = {
             "Macintosh HD",
             "Macintosh HD - Data",
-            "MacBook",
+            "Macbook",
             "Macbook - Data",
             ".timemachine"
             }
