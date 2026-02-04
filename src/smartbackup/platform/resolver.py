@@ -152,10 +152,17 @@ class PathResolver:
         """Finds external drives on macOS."""
         drives: List[Tuple[Path, str, int]] = []
         volumes_path = Path("/Volumes")
+        excluded_names = {
+            "Macintosh HD",
+            "Macintosh HD - Data",
+            "MacBook",
+            "Macbook - Data",
+            ".timemachine"
+            }
 
         if volumes_path.exists():
             for volume in volumes_path.iterdir():
-                if volume.is_dir() and volume.name != "Macintosh HD":
+                if volume.is_dir() and volume.name not in excluded_names and not volume.name.startswith("."):
                     try:
                         _, _, free = shutil.disk_usage(volume)
                         drives.append((volume, volume.name, free))
