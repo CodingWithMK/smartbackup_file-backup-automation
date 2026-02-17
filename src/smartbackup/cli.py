@@ -13,7 +13,7 @@ from smartbackup.platform.resolver import PathResolver
 from smartbackup.ui.colors import Colors
 from smartbackup.ui.logger import BackupLogger
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 
 def _list_available_drives() -> None:

@@ -120,7 +120,7 @@ class SmartBackup:
 ║   ██████╔╝██║  ██║╚██████╗██║  ██╗╚██████╔╝██║                               ║
 ║   ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝╚═╝                                ║
 ║                                                                              ║
-║                    Intelligent Backup System v0.2.1                          ║
+║                    Intelligent Backup System v0.2.2                          ║
 ║                    Cross-Platform • Incremental • Efficient                  ║
 ║                                                                              ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
