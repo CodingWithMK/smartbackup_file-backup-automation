@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-02-23
+
+### Added
+- **Device-Aware Backups**: Multiple devices can now safely back up to the same external drive
+  - Each device gets its own subfolder under `Documents-Backup/` based on system hostname
+  - New `--device-name` flag to set a custom device identifier
+  - New `--list-devices` flag to show all devices with backups on a drive
+  - Automatic detection and sanitization of hostname via `platform.node()`
+  - macOS `.local` suffix (from mDNS/Bonjour) is stripped automatically
+- **New module: `platform/identity.py`** — `get_device_name()` function for device identification
+- **Manifest hostname field** — `hostname` recorded in manifest metadata for device traceability
+- **Legacy layout migration** — Existing flat `Documents-Backup/` layouts are automatically migrated into a per-device subfolder on first run
+
+### Changed
+- `BackupConfig` dataclass gains `device_name` field
+- `BackupEngine` builds backup path as `Documents-Backup/<device-name>/`
+- `RestoreEngine` accepts `device_name` parameter with auto-detection fallback
+- `ConfigManager` gains `set_device_name()` / `get_device_name()` for persistence
+- CLI functions (`_show_manifest`, `_verify_manifest`, `_handle_restore`) are now device-aware
+- Version updated to 0.3.0 across all files
+- Test count increased to 194
+
 ## [0.2.2] - 2026-02-17
 
 ### Changed
@@ -102,13 +124,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Roadmap
 
-### v0.3.0 (Planned)
+### v0.4.0 (Planned)
 - [ ] Compression support (zip/tar.gz)
 - [ ] SQLite manifest for large directories (100K+ files)
 - [ ] Better progress display with ETA
 - [ ] Quick hash comparison (xxhash/blake3)
 
-### v0.4.0 (Planned)
+### v0.5.0 (Planned)
 - [ ] Encryption support for sensitive files
 - [ ] Backup profiles
 - [ ] Resume interrupted backups
