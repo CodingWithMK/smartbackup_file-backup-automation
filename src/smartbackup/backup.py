@@ -11,6 +11,7 @@ from smartbackup.config import BackupConfig
 from smartbackup.core.engine import BackupEngine
 from smartbackup.handlers import FallbackHandler
 from smartbackup.platform.devices import DeviceDetector
+from smartbackup.platform.identity import get_device_name
 from smartbackup.platform.resolver import PathResolver
 from smartbackup.ui.colors import Colors
 from smartbackup.ui.logger import BackupLogger
@@ -29,6 +30,7 @@ class SmartBackup:
         custom_target: Optional[Path] = None,
         target_label: Optional[str] = None,
         use_manifest: bool = True,
+        device_name: Optional[str] = None,
     ) -> bool:
         """
         Executes the backup.
@@ -38,6 +40,7 @@ class SmartBackup:
             custom_target: Optional custom target path
             target_label: Preferred target medium label
             use_manifest: Whether to use manifest for incremental backups
+            device_name: Custom device name (default: auto-detected hostname)
 
         Returns:
             True if successful, False on errors
@@ -47,7 +50,11 @@ class SmartBackup:
         # Determine source directory
         source_path = custom_source or PathResolver.get_documents_path()
 
+        # Determine device name
+        resolved_device_name = device_name or get_device_name()
+
         self.logger.info(f"Source directory: {source_path}")
+        self.logger.info(f"Device identifier: {resolved_device_name}")
         self.logger.info(f"Operating system: {platform.system()} {platform.release()}")
 
         if not source_path.exists():
@@ -81,6 +88,7 @@ class SmartBackup:
             source_path=source_path,
             backup_path=backup_path,
             backup_folder_name="Documents-Backup",
+            device_name=resolved_device_name,
             max_workers=min(8, (os.cpu_count() or 4)),
             use_hash_verification=False,  # Faster without
             verbose=True,
@@ -120,7 +128,7 @@ class SmartBackup:
 ║   ██████╔╝██║  ██║╚██████╗██║  ██╗╚██████╔╝██║                               ║
 ║   ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝╚═╝                                ║
 ║                                                                              ║
-║                    Intelligent Backup System v0.2.2                          ║
+║                    Intelligent Backup System v0.3.0                          ║
 ║                    Cross-Platform • Incremental • Efficient                  ║
 ║                                                                              ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
