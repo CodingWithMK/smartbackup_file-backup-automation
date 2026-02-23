@@ -111,6 +111,7 @@ class BackupConfig:
     source_path: Path
     backup_path: Path
     backup_folder_name: str = "Documents-Backup"
+    device_name: str = ""  # Device identifier for per-device subfolder
     exclusions: Set[str] = field(default_factory=lambda: DEFAULT_EXCLUSIONS.copy())
     excluded_extensions: Set[str] = field(default_factory=lambda: EXCLUDED_EXTENSIONS.copy())
     max_workers: int = 4
@@ -186,3 +187,14 @@ class ConfigManager:
         """Loads preferred target medium."""
         config = self.load()
         return config.get("preferred_target")
+
+    def set_device_name(self, name: str) -> None:
+        """Save a custom device name override."""
+        config = self.load()
+        config["device_name"] = name
+        self.save(config)
+
+    def get_device_name(self) -> Optional[str]:
+        """Load custom device name (None = use auto-detected hostname)."""
+        config = self.load()
+        return config.get("device_name")

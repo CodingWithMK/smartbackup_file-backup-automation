@@ -43,6 +43,7 @@ class BackupEngine:
         self._manifest_manager: Optional[ManifestManager] = None
         self._manifest: Optional[Manifest] = None
         self._backed_up_files: List[FileInfo] = []
+        self._backup_target: Optional[Path] = None
 
     def run_backup(self) -> BackupResult:
         """Performs the complete backup."""
@@ -66,14 +67,24 @@ class BackupEngine:
                 self.config.min_file_size_for_hash,
             )
 
-            # 3. Create backup directory
-            backup_target = self.config.backup_path / self.config.backup_folder_name
+            # 3. Create backup directory (with per-device subfolder)
+            backup_root = self.config.backup_path / self.config.backup_folder_name
+            if self.config.device_name:
+                # Migrate legacy layout if needed
+                self._migrate_legacy_layout(backup_root)
+                backup_target = backup_root / self.config.device_name
+            else:
+                backup_target = backup_root
             backup_target.mkdir(parents=True, exist_ok=True)
+            self._backup_target = backup_target
 
             # 4. Initialize manifest if enabled
             if self.config.use_manifest:
                 self._manifest_manager = JsonManifestManager(backup_target)
                 self._manifest = self._manifest_manager.load_or_create(self.config.source_path)
+                # Embed device hostname in manifest metadata
+                if self.config.device_name:
+                    self._manifest.hostname = self.config.device_name
                 self.logger.info(f"Manifest: {self._manifest.total_files} files tracked")
 
             # 5. Scan source files
@@ -147,6 +158,49 @@ class BackupEngine:
                 self._write_log_file()
 
         return self.result
+
+    def _migrate_legacy_layout(self, backup_root: Path) -> None:
+        """Migrate legacy flat layout to per-device subfolder structure.
+
+        If Documents-Backup/ contains files directly (legacy layout), move them
+        into a device-named subfolder so multiple devices can coexist.
+        """
+        if not backup_root.exists():
+            return  # Fresh backup, no migration needed
+
+        # Check for legacy indicators at the root level
+        legacy_manifest = backup_root / ".smartbackup_manifest.json"
+        legacy_logs = backup_root / "_backup_logs"
+        has_root_files = any(item.is_file() for item in backup_root.iterdir())
+
+        if not (legacy_manifest.exists() or legacy_logs.exists() or has_root_files):
+            return  # Already using new layout or empty
+
+        device_name = self.config.device_name
+        device_folder = backup_root / device_name
+
+        # If device folder already exists, skip migration
+        if device_folder.exists():
+            return
+
+        self.logger.info("Detected legacy backup layout. Migrating to per-device structure...")
+        self.logger.info(f"Moving existing backup into: {device_name}/")
+
+        # Create a temporary directory for the move
+        temp_name = f".migration_temp_{int(time.time())}"
+        temp_dir = backup_root / temp_name
+        temp_dir.mkdir()
+
+        # Move all items (except the temp dir itself) into the temp dir
+        for item in backup_root.iterdir():
+            if item.name == temp_name:
+                continue
+            item.rename(temp_dir / item.name)
+
+        # Rename temp dir to device folder
+        temp_dir.rename(device_folder)
+
+        self.logger.success("Migration complete!")
 
     def _validate_paths(self) -> bool:
         """Validates source and target paths."""
@@ -261,7 +315,10 @@ class BackupEngine:
 
     def _write_log_file(self) -> None:
         """Writes detailed log to the backup medium."""
-        log_dir = self.config.backup_path / self.config.backup_folder_name / "_backup_logs"
+        if self._backup_target is None:
+            log_dir = self.config.backup_path / self.config.backup_folder_name / "_backup_logs"
+        else:
+            log_dir = self._backup_target / "_backup_logs"
         log_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -279,7 +336,7 @@ class BackupEngine:
 
 CONFIGURATION:
   Source:     {self.config.source_path}
-  Target:     {self.config.backup_path / self.config.backup_folder_name}
+  Target:     {self._backup_target or (self.config.backup_path / self.config.backup_folder_name)}
   Timestamp:  {self.result.start_time.strftime("%Y-%m-%d %H:%M:%S")}
 
 SUMMARY:

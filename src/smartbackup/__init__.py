@@ -16,7 +16,7 @@ Quick Start:
     >>> backup.run()
 """
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 __author__ = "Muhammed Musab Kaya - @CodingWithMK"
 __license__ = "MIT"
 
@@ -39,6 +39,7 @@ from smartbackup.manifest import (
 )
 from smartbackup.models import BackupResult, FileAction, FileInfo
 from smartbackup.platform.devices import DeviceDetector
+from smartbackup.platform.identity import get_device_name
 from smartbackup.platform.resolver import PathResolver
 from smartbackup.platform.scheduler import SchedulerHelper
 from smartbackup.ui.colors import Colors
@@ -80,6 +81,7 @@ __all__ = [
     "PathResolver",
     "DeviceDetector",
     "SchedulerHelper",
+    "get_device_name",
     # UI
     "BackupLogger",
     "Colors",

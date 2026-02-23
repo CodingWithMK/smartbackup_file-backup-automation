@@ -44,6 +44,7 @@ Ever tried to backup your Documents folder only to wait hours because of massive
 | 📊 **Incremental Backup** | Only copies new or modified files |
 | 📋 **Manifest Tracking** | JSON manifest for 10x faster incremental backups |
 | 🔄 **Restore Support** | Full restore functionality with pattern filtering |
+| 💻 **Multi-Device** | Per-device backup folders — multiple machines share one drive safely |
 | 🔌 **Auto-Detection** | Automatically finds external drives |
 | 📝 **Detailed Logging** | Progress bar + log file on backup drive |
 | 🎯 **Zero Dependencies** | Pure Python, no pip installs required |
@@ -137,6 +138,12 @@ python main.py --target /media/USB_DRIVE
 # Find drive by name
 python main.py --label "My Backup Drive"
 
+# Use a custom device name (default: auto-detected hostname)
+python main.py --device-name "Work Laptop"
+
+# List devices with backups on the target drive
+python main.py --list-devices --target /media/USB_DRIVE
+
 # See what would be backed up (without copying)
 python main.py --dry-run
 
@@ -155,7 +162,8 @@ python main.py --exclude "downloads" "*.iso"
 ```
 usage: smartbackup [-h] [-s SOURCE] [-t TARGET] [-l LABEL] [--dry-run]
                    [-q] [--exclude PATTERN [PATTERN ...]] [--list-drives]
-                   [--no-manifest] [--show-manifest] [--verify] [-v]
+                   [--no-manifest] [--show-manifest] [--verify]
+                   [--device-name NAME] [--list-devices] [-v]
                    {restore} ...
 
 Options:
@@ -170,6 +178,8 @@ Options:
   --no-manifest         Disable manifest tracking
   --show-manifest       Display manifest contents
   --verify              Verify backup against manifest
+  --device-name NAME    Custom device name (default: auto-detected hostname)
+  --list-devices        List devices with backups on the target drive
   -v, --version         Show version
 
 Commands:
@@ -184,6 +194,9 @@ smartbackup restore --source /path/to/backup
 
 # Restore to a specific directory
 smartbackup restore --source /path/to/backup --target ~/Restored
+
+# Restore from a specific device's backup
+smartbackup restore --source /path/to/backup --device-name "Office-Desktop"
 
 # Restore only specific files (pattern matching)
 smartbackup restore --source /path/to/backup --pattern "*.py" "*.md"
@@ -217,11 +230,12 @@ smartbackup --no-manifest
 
 ```
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║                    Intelligent Backup System v0.2.2                          ║
+║                    Intelligent Backup System v0.3.0                          ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
 ℹ  [2024-01-15 09:30:22] Source directory: /Users/dev/Documents
 ℹ  [2024-01-15 09:30:22] Operating system: Darwin 23.1.0
+ℹ  [2024-01-15 09:30:22] Device identifier: Musabs-MacBook-Pro
 
 ▶ Searching for external storage medium...
 ✓  [2024-01-15 09:30:22] External medium found: BACKUP_USB (/Volumes/BACKUP_USB) - 234.5 GB free
@@ -318,15 +332,27 @@ python main.py --exclude "my_folder" "*.iso" "downloads"
 
 ### Backup Location
 
-Files are backed up to:
+Files are backed up to a per-device subfolder based on your system hostname:
 ```
 YOUR_EXTERNAL_DRIVE/
 └── Documents-Backup/
-    ├── _backup_logs/
-    │   └── backup_20240115_093022.log
-    ├── Your files and folders...
-    └── ...
+    ├── Musabs-MacBook-Pro/              # Auto-detected from hostname
+    │   ├── .smartbackup_manifest.json
+    │   ├── _backup_logs/
+    │   │   └── backup_20240115_093022.log
+    │   ├── Your files and folders...
+    │   └── ...
+    │
+    └── Office-Desktop/                  # Another device's backup
+        ├── .smartbackup_manifest.json
+        ├── _backup_logs/
+        │   └── backup_20240114_180500.log
+        └── ...
 ```
+
+Multiple devices can back up to the same drive without conflicts. Each device's backup is isolated in its own subfolder.
+
+If you have an existing backup from a previous version (files directly in `Documents-Backup/`), SmartBackup will automatically migrate it into a device subfolder on the next run.
 
 ---
 
@@ -398,11 +424,12 @@ smartbackup_file-backup-automation/
 │       ├── platform/
 │       │   ├── resolver.py   # Path resolution
 │       │   ├── devices.py    # Device detection
+│       │   ├── identity.py   # Device identification (hostname)
 │       │   └── scheduler.py  # OS scheduler helpers
 │       └── ui/
 │           ├── colors.py     # Terminal colors
 │           └── logger.py     # Logging
-├── tests/                    # 175 tests
+├── tests/                    # 194 tests
 ├── main.py                   # Quick entry point
 ├── pyproject.toml
 └── README.md
