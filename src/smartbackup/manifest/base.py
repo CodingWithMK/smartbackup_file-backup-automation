@@ -113,6 +113,7 @@ class Manifest:
     created: datetime = field(default_factory=datetime.now)
     updated: datetime = field(default_factory=datetime.now)
     source: str = ""
+    hostname: str = ""  # Device hostname for identification
     backup_count: int = 0
     entries: Dict[str, ManifestEntry] = field(default_factory=dict)
 
@@ -158,6 +159,7 @@ class Manifest:
             "created": self.created.isoformat(),
             "updated": self.updated.isoformat(),
             "source": self.source,
+            "hostname": self.hostname,
             "backup_count": self.backup_count,
             "total_files": self.total_files,
             "total_size": self.total_size,
@@ -173,6 +175,7 @@ class Manifest:
             created=datetime.fromisoformat(data.get("created", datetime.now().isoformat())),
             updated=datetime.fromisoformat(data.get("updated", datetime.now().isoformat())),
             source=data.get("source", ""),
+            hostname=data.get("hostname", ""),
             backup_count=data.get("backup_count", 0),
         )
 
