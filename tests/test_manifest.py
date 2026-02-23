@@ -229,7 +229,7 @@ class TestManifest:
 
     def test_to_dict_and_from_dict(self) -> None:
         """Test serialization roundtrip."""
-        manifest = Manifest(source="/test/path")
+        manifest = Manifest(source="/test/path", hostname="My-Laptop")
 
         entry = ManifestEntry(
             relative_path="test.txt",
@@ -245,13 +245,33 @@ class TestManifest:
         # Serialize
         data = manifest.to_dict()
 
+        assert data["hostname"] == "My-Laptop"
+
         # Deserialize
         restored = Manifest.from_dict(data)
 
         assert restored.source == "/test/path"
+        assert restored.hostname == "My-Laptop"
         assert restored.backup_count == 5
         assert restored.total_files == 1
         assert restored.has_entry("test.txt")
+
+    def test_hostname_default_empty(self) -> None:
+        """Test that hostname defaults to empty string."""
+        manifest = Manifest()
+        assert manifest.hostname == ""
+
+    def test_hostname_from_dict_missing(self) -> None:
+        """Test that from_dict handles missing hostname gracefully."""
+        data = {
+            "version": 1,
+            "format": "json",
+            "source": "/test",
+            "backup_count": 0,
+            "files": {},
+        }
+        manifest = Manifest.from_dict(data)
+        assert manifest.hostname == ""
 
 
 class TestManifestDiff:

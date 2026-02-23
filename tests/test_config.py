@@ -63,10 +63,20 @@ class TestBackupConfig:
         config = BackupConfig(source_path=temp_dir, backup_path=temp_dir)
 
         assert config.backup_folder_name == "Documents-Backup"
+        assert config.device_name == ""
         assert config.max_workers >= 1
         assert config.use_hash_verification is False
         assert config.log_to_file is True
         assert config.verbose is True
+
+    def test_custom_device_name(self, temp_dir: Path):
+        """Custom device_name should be accepted."""
+        config = BackupConfig(
+            source_path=temp_dir,
+            backup_path=temp_dir,
+            device_name="Work-Laptop",
+        )
+        assert config.device_name == "Work-Laptop"
 
     def test_exclusions_are_copied(self, temp_dir: Path):
         """Default exclusions should be a copy, not the original set."""
@@ -176,3 +186,23 @@ class TestConfigManager:
 
         target = manager.get_preferred_target()
         assert target is None
+
+    def test_set_and_get_device_name(self):
+        """Device name should be saveable and loadable."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = ConfigManager()
+            manager.config_dir = Path(tmpdir)
+            manager.config_file = Path(tmpdir) / "config.json"
+
+            manager.set_device_name("My-MacBook")
+
+            name = manager.get_device_name()
+            assert name == "My-MacBook"
+
+    def test_get_device_name_none_by_default(self):
+        """Device name should be None by default."""
+        manager = ConfigManager()
+        manager.config_file = Path("/tmp/nonexistent_config.json")
+
+        name = manager.get_device_name()
+        assert name is None

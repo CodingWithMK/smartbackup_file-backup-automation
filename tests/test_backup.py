@@ -40,8 +40,8 @@ class TestVersion:
         assert len(parts) >= 2
 
     def test_version_is_0_2_1(self):
-        """Version should be 0.2.1."""
-        assert __version__ == "0.2.1"
+        """Version should be 0.3.0."""
+        assert __version__ == "0.3.0"
 
 
 class TestImports:
@@ -123,9 +123,20 @@ class TestBackupConfig:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = BackupConfig(source_path=Path(tmpdir), backup_path=Path(tmpdir))
             assert config.backup_folder_name == "Documents-Backup"
+            assert config.device_name == ""
             assert config.max_workers >= 1
             assert "node_modules" in config.exclusions
             assert "__pycache__" in config.exclusions
+
+    def test_custom_device_name(self):
+        """Custom device_name should be accepted."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = BackupConfig(
+                source_path=Path(tmpdir),
+                backup_path=Path(tmpdir),
+                device_name="My-Laptop",
+            )
+            assert config.device_name == "My-Laptop"
 
     def test_custom_exclusions(self):
         """Custom exclusions should be accepted."""
