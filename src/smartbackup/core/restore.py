@@ -73,6 +73,7 @@ class RestoreEngine:
         target_path: Optional[Path] = None,
         logger: Optional[BackupLogger] = None,
         backup_folder: str = "Documents-Backup",
+        device_name: str = "",
     ):
         """
         Initialize restore engine.
@@ -82,10 +83,24 @@ class RestoreEngine:
             target_path: Where to restore files (default: original source location)
             logger: Logger for output
             backup_folder: Name of the backup folder
+            device_name: Device subfolder name (empty = auto-detect or legacy)
         """
         self.backup_path = backup_path
         self.backup_folder = backup_folder
+
+        # Build backup target path with optional device subfolder
         self.backup_target = backup_path / backup_folder
+        if device_name:
+            self.backup_target = self.backup_target / device_name
+        elif self.backup_target.exists():
+            # Auto-detect: if no manifest at root, try auto-detected hostname
+            if not (self.backup_target / ".smartbackup_manifest.json").exists():
+                from smartbackup.platform.identity import get_device_name
+
+                candidate = self.backup_target / get_device_name()
+                if candidate.exists():
+                    self.backup_target = candidate
+
         self.target_path = target_path
         self.logger = logger or BackupLogger(verbose=True)
         self.result = RestoreResult()
