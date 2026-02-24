@@ -7,13 +7,16 @@ import platform
 from pathlib import Path
 from typing import Optional
 
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+
 from smartbackup.config import BackupConfig
 from smartbackup.core.engine import BackupEngine
 from smartbackup.handlers import FallbackHandler
 from smartbackup.platform.devices import DeviceDetector
 from smartbackup.platform.identity import get_device_name
 from smartbackup.platform.resolver import PathResolver
-from smartbackup.ui.colors import Colors
 from smartbackup.ui.logger import BackupLogger
 
 
@@ -109,28 +112,37 @@ class SmartBackup:
         return success
 
     def _print_banner(self) -> None:
-        """Shows the program banner."""
-        banner = f"""
-{Colors.CYAN}
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                                                                              ║
-║   ███████╗███╗   ███╗ █████╗ ██████╗ ████████╗                               ║
-║   ██╔════╝████╗ ████║██╔══██╗██╔══██╗╚══██╔══╝                               ║
-║   ███████╗██╔████╔██║███████║██████╔╝   ██║                                  ║
-║   ╚════██║██║╚██╔╝██║██╔══██║██╔══██╗   ██║                                  ║
-║   ███████║██║ ╚═╝ ██║██║  ██║██║  ██║   ██║                                  ║
-║   ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝                                  ║
-║                                                                              ║
-║   ██████╗  █████╗  ██████╗██╗  ██╗██╗   ██╗██████╗                           ║
-║   ██╔══██╗██╔══██╗██╔════╝██║ ██╔╝██║   ██║██╔══██╗                          ║
-║   ██████╔╝███████║██║     █████╔╝ ██║   ██║██████╔╝                          ║
-║   ██╔══██╗██╔══██║██║     ██╔═██╗ ██║   ██║██╔═══╝                           ║
-║   ██████╔╝██║  ██║╚██████╗██║  ██╗╚██████╔╝██║                               ║
-║   ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝╚═╝                                ║
-║                                                                              ║
-║                    Intelligent Backup System v0.3.0                          ║
-║                    Cross-Platform • Incremental • Efficient                  ║
-║                                                                              ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-{Colors.END}"""
-        print(banner)
+        """Shows the program banner using Rich."""
+        banner_text = Text(justify="center")
+        banner_text.append(
+            "███████╗███╗   ███╗ █████╗ ██████╗ ████████╗\n"
+            "██╔════╝████╗ ████║██╔══██╗██╔══██╗╚══██╔══╝\n"
+            "███████╗██╔████╔██║███████║██████╔╝   ██║   \n"
+            "╚════██║██║╚██╔╝██║██╔══██║██╔══██╗   ██║   \n"
+            "███████║██║ ╚═╝ ██║██║  ██║██║  ██║   ██║   \n"
+            "╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   \n",
+            style="bold cyan",
+        )
+        banner_text.append(
+            "██████╗  █████╗  ██████╗██╗  ██╗██╗   ██╗██████╗ \n"
+            "██╔══██╗██╔══██╗██╔════╝██║ ██╔╝██║   ██║██╔══██╗\n"
+            "██████╔╝███████║██║     █████╔╝ ██║   ██║██████╔╝\n"
+            "██╔══██╗██╔══██║██║     ██╔═██╗ ██║   ██║██╔═══╝ \n"
+            "██████╔╝██║  ██║╚██████╗██║  ██╗╚██████╔╝██║     \n"
+            "╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝╚═╝     \n",
+            style="bold cyan",
+        )
+        banner_text.append("\n", style="")
+        banner_text.append("Intelligent Backup System v0.4.0\n", style="bold white")
+        banner_text.append("Cross-Platform  •  Incremental  •  Efficient", style="dim")
+
+        _console = Console(highlight=False)
+        _console.print()
+        _console.print(
+            Panel(
+                banner_text,
+                style="cyan",
+                padding=(1, 4),
+            )
+        )
+        _console.print()

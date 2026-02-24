@@ -12,6 +12,9 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from rich.console import Console
+from rich.table import Table
+
 from smartbackup.manifest.json_manifest import JsonManifestManager
 from smartbackup.models import FileAction
 from smartbackup.ui.logger import BackupLogger
@@ -318,19 +321,32 @@ class RestoreEngine:
             return False, FileAction.ERROR, str(e)
 
     def _print_summary(self) -> None:
-        """Print restore summary."""
-        print("\n" + "=" * 70)
-        print("RESTORE SUMMARY")
-        print("=" * 70)
-        print(f"  Total Files:      {self.result.total_files:,}")
-        print(f"  Restored:         {self.result.restored_files:,}")
-        print(f"  Overwritten:      {self.result.overwritten_files:,}")
-        print(f"  Skipped:          {self.result.skipped_files:,}")
-        print(f"  Errors:           {self.result.errors:,}")
-        print(f"  Restored Size:    {self.result.restored_size / (1024 * 1024):.2f} MB")
-        print(f"  Duration:         {self.result.duration:.1f} seconds")
-        print(f"  Speed:            {self.result.speed_mbps:.2f} MB/s")
-        print("=" * 70 + "\n")
+        """Print restore summary using Rich table."""
+        _console = Console(highlight=False)
+
+        table = Table(
+            title="RESTORE SUMMARY",
+            title_style="bold cyan",
+            show_header=False,
+            expand=False,
+            border_style="cyan",
+            padding=(0, 2),
+        )
+        table.add_column("Metric", style="bold")
+        table.add_column("Value", justify="right")
+
+        table.add_row("Total Files", f"{self.result.total_files:,}")
+        table.add_row("[green]Restored[/green]", f"{self.result.restored_files:,}")
+        table.add_row("[blue]Overwritten[/blue]", f"{self.result.overwritten_files:,}")
+        table.add_row("[yellow]Skipped[/yellow]", f"{self.result.skipped_files:,}")
+        table.add_row("[red]Errors[/red]", f"{self.result.errors:,}")
+        table.add_row("Restored Size", f"{self.result.restored_size / (1024 * 1024):.2f} MB")
+        table.add_row("Duration", f"{self.result.duration:.1f} seconds")
+        table.add_row("Speed", f"{self.result.speed_mbps:.2f} MB/s")
+
+        _console.print()
+        _console.print(table)
+        _console.print()
 
         if self.result.errors == 0:
             self.logger.success("Restore completed successfully!")

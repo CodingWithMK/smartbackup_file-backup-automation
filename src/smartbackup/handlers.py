@@ -5,9 +5,14 @@ Handlers - Fallback and error handling.
 from pathlib import Path
 from typing import Optional
 
+from rich.console import Console
+from rich.panel import Panel
+from rich.prompt import Prompt
+
 from smartbackup.models import BackupResult
-from smartbackup.ui.colors import Colors
 from smartbackup.ui.logger import BackupLogger
+
+console = Console(highlight=False)
 
 
 class FallbackHandler:
@@ -30,31 +35,30 @@ class FallbackHandler:
         Returns:
             Alternative backup path or None
         """
-        self.logger.warning(
-            """
-+================================================================+
-|  !  EXTERNAL STORAGE MEDIUM NOT FOUND                          |
-+================================================================+
-|                                                                |
-|  Please make sure that:                                        |
-|  - The external medium is connected                            |
-|  - The medium is recognized by the system                      |
-|  - You have write permissions on the medium                    |
-|                                                                |
-+================================================================+
-"""
+        warning_msg = (
+            "[bold]EXTERNAL STORAGE MEDIUM NOT FOUND[/bold]\n\n"
+            "Please make sure that:\n"
+            "  - The external medium is connected\n"
+            "  - The medium is recognized by the system\n"
+            "  - You have write permissions on the medium"
+        )
+
+        console.print()
+        console.print(
+            Panel(warning_msg, title="Warning", style="yellow", expand=False, padding=(1, 2))
         )
 
         # Option 1: Offer local backup
         local_backup = Path.home() / ".local_backup_temp"
 
-        print(f"\n{Colors.YELLOW}Options:{Colors.END}")
-        print(f"  [1] Create local temporary backup ({local_backup})")
-        print("  [2] Wait and try again")
-        print("  [3] Cancel")
+        console.print()
+        console.print("[yellow]Options:[/yellow]")
+        console.print(f"  [bold]\\[1][/bold] Create local temporary backup ({local_backup})")
+        console.print("  [bold]\\[2][/bold] Wait and try again")
+        console.print("  [bold]\\[3][/bold] Cancel")
 
         try:
-            choice = input(f"\n{Colors.CYAN}Your choice (1-3): {Colors.END}").strip()
+            choice = Prompt.ask("\n[cyan]Your choice[/cyan]", choices=["1", "2", "3"], default="3")
 
             if choice == "1":
                 local_backup.mkdir(parents=True, exist_ok=True)
@@ -62,7 +66,7 @@ class FallbackHandler:
                 return local_backup
 
             elif choice == "2":
-                print("\nPlease connect the external medium and press Enter...")
+                console.print("\nPlease connect the external medium and press Enter...")
                 input()
                 return None  # Will retry
 
@@ -71,7 +75,7 @@ class FallbackHandler:
                 return None
 
         except KeyboardInterrupt:
-            print("\n")
+            console.print()
             self.logger.info("Backup cancelled by user.")
             return None
 
