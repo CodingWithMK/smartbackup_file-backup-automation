@@ -113,34 +113,32 @@ class SmartBackup:
 
     def _print_banner(self) -> None:
         """Shows the program banner using Rich."""
-        banner_text = Text(justify="center")
-        banner_text.append(
-            "███████╗███╗   ███╗ █████╗ ██████╗ ████████╗\n"
-            "██╔════╝████╗ ████║██╔══██╗██╔══██╗╚══██╔══╝\n"
-            "███████╗██╔████╔██║███████║██████╔╝   ██║   \n"
-            "╚════██║██║╚██╔╝██║██╔══██║██╔══██╗   ██║   \n"
-            "███████║██║ ╚═╝ ██║██║  ██║██║  ██║   ██║   \n"
-            "╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   \n",
+        from rich.align import Align
+        from rich.console import Group
+
+        art = Text()
+        art.append(
+            "███████╗███╗   ███╗ █████╗ ██████╗ ████████╗  ██████╗  █████╗  ██████╗██╗  ██╗██╗   ██╗██████╗\n"
+            "██╔════╝████╗ ████║██╔══██╗██╔══██╗╚══██╔══╝  ██╔══██╗██╔══██╗██╔════╝██║ ██╔╝██║   ██║██╔══██╗\n"
+            "███████╗██╔████╔██║███████║██████╔╝   ██║     ██████╔╝███████║██║     █████╔╝ ██║   ██║██████╔╝\n"
+            "╚════██║██║╚██╔╝██║██╔══██║██╔══██╗   ██║     ██╔══██╗██╔══██║██║     ██╔═██╗ ██║   ██║██╔═══╝\n"
+            "███████║██║ ╚═╝ ██║██║  ██║██║  ██║   ██║     ██████╔╝██║  ██║╚██████╗██║  ██╗╚██████╔╝██║\n"
+            "╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝     ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝╚═╝",
             style="bold cyan",
         )
-        banner_text.append(
-            "██████╗  █████╗  ██████╗██╗  ██╗██╗   ██╗██████╗ \n"
-            "██╔══██╗██╔══██╗██╔════╝██║ ██╔╝██║   ██║██╔══██╗\n"
-            "██████╔╝███████║██║     █████╔╝ ██║   ██║██████╔╝\n"
-            "██╔══██╗██╔══██║██║     ██╔═██╗ ██║   ██║██╔═══╝ \n"
-            "██████╔╝██║  ██║╚██████╗██║  ██╗╚██████╔╝██║     \n"
-            "╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝╚═╝     \n",
-            style="bold cyan",
-        )
-        banner_text.append("\n", style="")
-        banner_text.append("Intelligent Backup System v0.4.0\n", style="bold white")
-        banner_text.append("Cross-Platform  •  Incremental  •  Efficient", style="dim")
+
+        subtitle = Text(justify="center")
+        subtitle.append("\n\n", style="")
+        subtitle.append("Intelligent Backup System v0.4.0\n", style="bold white")
+        subtitle.append("Cross-Platform  •  Incremental  •  Efficient", style="dim")
+
+        content = Group(Align.center(art), subtitle)
 
         _console = Console(highlight=False)
         _console.print()
         _console.print(
             Panel(
-                banner_text,
+                content,
                 style="cyan",
                 padding=(1, 4),
             )
