@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-02-24
+
+### Changed
+- **Modernized CLI with Typer**: Replaced `argparse` with `typer` for polished CLI experience with auto-generated help panels
+- **Modernized terminal output with Rich**: Replaced raw ANSI escape codes and manual `print()` formatting with `rich` (Console, Panel, Table, Progress)
+  - Headers displayed as styled Rich Panels
+  - Backup summary rendered as a Rich Table
+  - Progress bars powered by Rich Progress with spinner, ETA, and transfer speed
+  - File actions, prompts, and scheduler instructions all use Rich markup
+- **Added `rich>=13.0.0` and `typer>=0.9.0`** as runtime dependencies
+- Version updated to 0.4.0 across all files
+
+### Fixed
+- Fixed `_stop_progress()` not resetting `_progress_line_active` flag when no progress bar was active
+
 ## [0.3.0] - 2026-02-23
 
 ### Added
@@ -124,13 +139,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Roadmap
 
-### v0.4.0 (Planned)
+### v0.5.0 (Planned)
 - [ ] Compression support (zip/tar.gz)
 - [ ] SQLite manifest for large directories (100K+ files)
-- [ ] Better progress display with ETA
 - [ ] Quick hash comparison (xxhash/blake3)
 
-### v0.5.0 (Planned)
+### v0.6.0 (Planned)
 - [ ] Encryption support for sensitive files
 - [ ] Backup profiles
 - [ ] Resume interrupted backups
