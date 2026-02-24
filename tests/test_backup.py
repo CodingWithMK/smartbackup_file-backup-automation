@@ -39,9 +39,9 @@ class TestVersion:
         parts = __version__.split(".")
         assert len(parts) >= 2
 
-    def test_version_is_0_2_1(self):
-        """Version should be 0.3.0."""
-        assert __version__ == "0.3.0"
+    def test_version_is_0_4_0(self):
+        """Version should be 0.4.0."""
+        assert __version__ == "0.4.0"
 
 
 class TestImports:

@@ -14,9 +14,9 @@ from smartbackup.cli import main, _list_available_drives, __version__
 class TestCLIVersion:
     """Tests for CLI version."""
 
-    def test_version_is_0_2_1(self):
-        """Version should be 0.3.0."""
-        assert __version__ == "0.3.0"
+    def test_version_is_0_4_0(self):
+        """Version should be 0.4.0."""
+        assert __version__ == "0.4.0"
 
 
 class TestListDrives:
@@ -41,12 +41,10 @@ class TestMainFunction:
             assert result == 0
 
     def test_main_with_version(self):
-        """--version should exit with SystemExit."""
+        """--version should exit with 0."""
         with patch.object(sys, "argv", ["smartbackup", "--version"]):
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-            # argparse exits with 0 for --version
-            assert exc_info.value.code == 0
+            result = main()
+            assert result == 0
 
     def test_main_with_nonexistent_source(self):
         """Non-existent source should return error."""
