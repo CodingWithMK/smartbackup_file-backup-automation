@@ -16,7 +16,7 @@ Quick Start:
     >>> backup.run()
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __author__ = "Muhammed Musab Kaya - @CodingWithMK"
 __license__ = "MIT"
 
@@ -26,6 +26,7 @@ from smartbackup.cli import main
 from smartbackup.config import BackupConfig, ConfigManager, DEFAULT_EXCLUSIONS, EXCLUDED_EXTENSIONS
 from smartbackup.core.detector import ChangeDetector
 from smartbackup.core.engine import BackupEngine, DryRunBackupEngine
+from smartbackup.core.compressor import BackupCompressor
 from smartbackup.core.restore import ConflictResolution, RestoreEngine, RestoreResult
 from smartbackup.core.scanner import ExclusionFilter, FileScanner
 from smartbackup.handlers import FallbackHandler
@@ -64,6 +65,7 @@ __all__ = [
     # Core components
     "BackupEngine",
     "DryRunBackupEngine",
+    "BackupCompressor",
     "FileScanner",
     "ExclusionFilter",
     "ChangeDetector",

@@ -14,9 +14,9 @@ from smartbackup.cli import main, _list_available_drives, __version__
 class TestCLIVersion:
     """Tests for CLI version."""
 
-    def test_version_is_0_4_0(self):
-        """Version should be 0.4.0."""
-        assert __version__ == "0.4.0"
+    def test_version_is_0_5_0(self):
+        """Version should be 0.5.0."""
+        assert __version__ == "0.5.0"
 
 
 class TestListDrives:

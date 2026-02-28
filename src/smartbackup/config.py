@@ -122,6 +122,8 @@ class BackupConfig:
     # Manifest options
     use_manifest: bool = True  # Use manifest for faster incremental backups
     manifest_format: str = "json"  # "json" or "sqlite" (future)
+    # Compression options
+    compress_format: Optional[str] = None  # None (no compression), "zip", or "tar.gz"
 
 
 class ConfigManager:

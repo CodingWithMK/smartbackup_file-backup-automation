@@ -146,6 +146,20 @@ class BackupEngine:
                 else:
                     self.logger.warning("Failed to save manifest")
 
+            # 10. Compress backup if requested
+            if self.config.compress_format:
+                from smartbackup.core.compressor import BackupCompressor
+
+                compressor = BackupCompressor(self.logger)
+                archive_name = compressor.get_archive_name(
+                    self.config.device_name or "backup",
+                    self.config.compress_format,
+                )
+                archive_path = backup_root / archive_name
+                compressor.compress(
+                    backup_target, archive_path, self.config.compress_format
+                )
+
         except Exception as e:
             self.logger.error(f"Backup error: {e}")
             self.result.errors += 1

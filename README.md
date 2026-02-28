@@ -45,6 +45,7 @@ Ever tried to backup your Documents folder only to wait hours because of massive
 | 📋 **Manifest Tracking** | JSON manifest for 10x faster incremental backups |
 | 🔄 **Restore Support** | Full restore functionality with pattern filtering |
 | 💻 **Multi-Device** | Per-device backup folders — multiple machines share one drive safely |
+| 📦 **Compression** | Optional zip/tar.gz archives — compress during backup or afterward |
 | 🔌 **Auto-Detection** | Automatically finds external drives |
 | 📝 **Detailed Logging** | Progress bar + log file on backup drive |
 | 🎯 **Zero Dependencies** | Pure Python, no pip installs required |
@@ -157,14 +158,34 @@ python main.py --quiet
 python main.py --exclude "downloads" "*.iso"
 ```
 
+### Compression
+
+```bash
+# Backup and compress as zip
+smartbackup --compress zip
+
+# Backup and compress as tar.gz
+smartbackup --compress tar.gz
+
+# Compress an existing (uncompressed) backup after the fact
+smartbackup compress --target /media/USB_DRIVE --format zip
+
+# Compress a specific device's backup
+smartbackup compress --target /media/USB_DRIVE --format tar.gz --device-name "Work Laptop"
+
+# Compress and remove the original uncompressed folder
+smartbackup compress --target /media/USB_DRIVE --format zip --remove-source
+```
+
 ### All Options
 
 ```
 usage: smartbackup [-h] [-s SOURCE] [-t TARGET] [-l LABEL] [--dry-run]
                    [-q] [--exclude PATTERN [PATTERN ...]] [--list-drives]
                    [--no-manifest] [--show-manifest] [--verify]
-                   [--device-name NAME] [--list-devices] [-v]
-                   {restore} ...
+                   [--device-name NAME] [--list-devices]
+                   [--compress FORMAT] [-v]
+                   {restore,compress} ...
 
 Options:
   -h, --help            Show this help message
@@ -180,10 +201,12 @@ Options:
   --verify              Verify backup against manifest
   --device-name NAME    Custom device name (default: auto-detected hostname)
   --list-devices        List devices with backups on the target drive
+  --compress FORMAT     Compress backup as "zip" or "tar.gz"
   -v, --version         Show version
 
 Commands:
   restore               Restore files from backup
+  compress              Compress an existing backup into an archive
 ```
 
 ### Restore Files from Backup
@@ -230,7 +253,7 @@ smartbackup --no-manifest
 
 ```
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║                    Intelligent Backup System v0.4.0                          ║
+║                    Intelligent Backup System v0.5.0                          ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
 ℹ  [2024-01-15 09:30:22] Source directory: /Users/dev/Documents
@@ -417,6 +440,7 @@ smartbackup_file-backup-automation/
 │       │   ├── engine.py     # Backup engine
 │       │   ├── scanner.py    # File scanner
 │       │   ├── detector.py   # Change detection
+│       │   ├── compressor.py # Compression (zip/tar.gz)
 │       │   └── restore.py    # Restore engine
 │       ├── manifest/
 │       │   ├── base.py       # Manifest classes

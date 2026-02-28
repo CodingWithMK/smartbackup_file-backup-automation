@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-03-01
+
+### Added
+- **Compression Support**: Create compressed archives of backups in `zip` or `tar.gz` format
+  - New `--compress FORMAT` option on the backup command (e.g., `smartbackup --compress zip`)
+  - New `smartbackup compress` subcommand to compress existing uncompressed backups after the fact
+  - Options: `--target`, `--format`, `--device-name`, `--remove-source`
+  - Archives are named `<device-name>_<YYYYMMDD_HHMMSS>.<ext>` and placed alongside device folders
+  - Atomic writes via temp files to prevent partial archives on failure
+- **New module: `core/compressor.py`** — `BackupCompressor` class with full zip/tar.gz support
+
+### Changed
+- Version updated to 0.5.0 across all files
+
 ## [0.4.0] - 2026-02-24
 
 ### Changed
@@ -139,8 +153,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Roadmap
 
-### v0.5.0 (Planned)
-- [ ] Compression support (zip/tar.gz)
+### v0.5.0
+- [x] Compression support (zip/tar.gz)
 - [ ] SQLite manifest for large directories (100K+ files)
 - [ ] Quick hash comparison (xxhash/blake3)
 

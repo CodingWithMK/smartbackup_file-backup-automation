@@ -349,7 +349,7 @@ class TestJsonManifestManager:
         manifest = manager.load_or_create(Path("/source/path"))
 
         assert manifest is not None
-        assert manifest.source == "/source/path"
+        assert manifest.source == str(Path("/source/path"))
         assert manifest.total_files == 0
 
     def test_load_or_create_existing(self, tmp_path: Path) -> None:

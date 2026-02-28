@@ -34,6 +34,7 @@ class SmartBackup:
         target_label: Optional[str] = None,
         use_manifest: bool = True,
         device_name: Optional[str] = None,
+        compress_format: Optional[str] = None,
     ) -> bool:
         """
         Executes the backup.
@@ -44,6 +45,7 @@ class SmartBackup:
             target_label: Preferred target medium label
             use_manifest: Whether to use manifest for incremental backups
             device_name: Custom device name (default: auto-detected hostname)
+            compress_format: Optional compression format ("zip" or "tar.gz")
 
         Returns:
             True if successful, False on errors
@@ -96,6 +98,7 @@ class SmartBackup:
             use_hash_verification=False,  # Faster without
             verbose=True,
             use_manifest=use_manifest,
+            compress_format=compress_format,
         )
 
         # Perform backup
@@ -129,7 +132,7 @@ class SmartBackup:
 
         subtitle = Text(justify="center")
         subtitle.append("\n\n", style="")
-        subtitle.append("Intelligent Backup System v0.4.0\n", style="bold white")
+        subtitle.append("Intelligent Backup System v0.5.0\n", style="bold white")
         subtitle.append("Cross-Platform  •  Incremental  •  Efficient", style="dim")
 
         content = Group(Align.center(art), subtitle)

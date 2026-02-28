@@ -20,7 +20,7 @@ from smartbackup.platform.identity import get_device_name
 from smartbackup.platform.resolver import PathResolver
 from smartbackup.ui.logger import BackupLogger
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 console = Console(highlight=False)
 
@@ -334,6 +334,122 @@ def _handle_restore(
 
 
 # ---------------------------------------------------------------------------
+# Compress sub-command
+# ---------------------------------------------------------------------------
+
+
+@app.command("compress", help="Compress an existing backup into an archive")
+def compress_cmd(
+    target: Path = typer.Option(
+        ...,
+        "-t",
+        "--target",
+        help="Path to backup drive/directory containing Documents-Backup/",
+    ),
+    fmt: str = typer.Option(
+        "zip",
+        "-f",
+        "--format",
+        help="Compression format: zip or tar.gz",
+    ),
+    device_name: Optional[str] = typer.Option(
+        None,
+        "--device-name",
+        help="Device name to compress (default: auto-detected hostname)",
+    ),
+    remove_source: bool = typer.Option(
+        False,
+        "--remove-source",
+        help="Remove uncompressed backup directory after successful compression",
+    ),
+    backup_folder: str = typer.Option(
+        "Documents-Backup",
+        "--backup-folder",
+        help="Backup folder name",
+        hidden=True,
+    ),
+) -> None:
+    """Compress an existing uncompressed backup into a zip or tar.gz archive."""
+    _handle_compress(
+        target=target,
+        fmt=fmt,
+        device_name=device_name,
+        remove_source=remove_source,
+        backup_folder=backup_folder,
+    )
+
+
+def _handle_compress(
+    target: Path,
+    fmt: str,
+    device_name: Optional[str],
+    remove_source: bool,
+    backup_folder: str = "Documents-Backup",
+) -> None:
+    """Core logic for the compress subcommand."""
+    import shutil
+
+    from smartbackup.core.compressor import SUPPORTED_FORMATS, BackupCompressor
+
+    logger = BackupLogger(verbose=True)
+    logger.header("Compress Existing Backup")
+
+    # Validate format
+    if fmt not in SUPPORTED_FORMATS:
+        logger.error(
+            f"Unsupported compression format: {fmt!r}. "
+            f"Use one of: {', '.join(SUPPORTED_FORMATS)}"
+        )
+        raise typer.Exit(code=1)
+
+    # Resolve backup root
+    root = target / backup_folder
+    if not root.exists():
+        logger.error(f"Backup directory not found: {root}")
+        raise typer.Exit(code=1)
+
+    # Resolve device target
+    device_target = _resolve_device_target(root, device_name)
+    resolved_device = device_target.name
+
+    if not device_target.exists():
+        logger.error(f"Device backup directory not found: {device_target}")
+        raise typer.Exit(code=1)
+
+    # Check if already compressed
+    compressor = BackupCompressor(logger)
+    if compressor.is_already_compressed(root, resolved_device):
+        logger.warning(f"Archives already exist for device '{resolved_device}'")
+        existing = compressor.find_archives(root, resolved_device)
+        for archive in existing:
+            logger.info(f"  Existing archive: {archive.name}")
+        logger.info("Proceeding with new archive anyway...")
+
+    # Create the archive
+    archive_name = compressor.get_archive_name(resolved_device, fmt)
+    archive_path = root / archive_name
+
+    try:
+        compressor.compress(device_target, archive_path, fmt)
+    except Exception as e:
+        logger.error(f"Compression failed: {e}")
+        raise typer.Exit(code=1)
+
+    # Optionally remove the source directory
+    if remove_source:
+        logger.info(f"Removing uncompressed directory: {device_target}")
+        try:
+            shutil.rmtree(device_target)
+            logger.success("Uncompressed backup directory removed")
+        except Exception as e:
+            logger.error(f"Failed to remove source directory: {e}")
+            logger.warning("Archive was created successfully, but source was not removed")
+            raise typer.Exit(code=1)
+
+    raise typer.Exit(code=0)
+
+
+# ---------------------------------------------------------------------------
 # Main (default) command -- backup
 # ---------------------------------------------------------------------------
 
@@ -374,6 +490,12 @@ def backup_cmd(
         False, "--show-manifest", help="Display manifest contents and exit"
     ),
     verify: bool = typer.Option(False, "--verify", help="Verify backup against manifest and exit"),
+    compress: Optional[str] = typer.Option(
+        None,
+        "--compress",
+        help="Compress backup into archive after copying (zip or tar.gz)",
+        metavar="FORMAT",
+    ),
     version: Optional[bool] = typer.Option(
         None,
         "-v",
@@ -421,6 +543,18 @@ def backup_cmd(
 
     # --- Normal backup flow ---
 
+    # Validate compression format if provided
+    if compress:
+        from smartbackup.core.compressor import SUPPORTED_FORMATS
+
+        if compress not in SUPPORTED_FORMATS:
+            logger.error(
+                f"Unsupported compression format: {compress!r}. "
+                f"Use one of: {', '.join(SUPPORTED_FORMATS)}"
+            )
+            raise typer.Exit(code=1)
+        logger.info(f"Compression enabled: {compress}")
+
     # Load config and add exclusions
     config_manager = ConfigManager()
     if exclude:
@@ -448,6 +582,7 @@ def backup_cmd(
             target_label=target_label,
             use_manifest=not no_manifest,
             device_name=device_name,
+            compress_format=compress,
         )
 
         raise typer.Exit(code=0 if success else 1)
