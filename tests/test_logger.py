@@ -156,10 +156,12 @@ class TestBackupLogger:
         logger = BackupLogger(verbose=True)
         logger.progress(50, 100, "test.txt", 1024, 2048)
 
-        captured = capsys.readouterr()
-        # Progress bar uses carriage return so may not capture fully
-        # But we can check that something was written
+        # The Rich progress bar is transient, so it may not leave content
+        # in captured output, but the internal state should be active
         assert logger._progress_line_active is True
+
+        # Clean up the progress bar
+        logger._stop_progress()
 
     def test_clear_progress_line(self, capsys):
         """Clearing progress line should work."""
