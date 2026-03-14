@@ -63,8 +63,9 @@ class BackupEngine:
             scanner = FileScanner(
                 exclusion_filter,
                 self.logger,
-                self.config.use_hash_verification,
-                self.config.min_file_size_for_hash,
+                use_hash=self.config.use_hash_verification,
+                hash_all=self.config.hash_all_files,
+                max_size_for_hash=self.config.max_file_size_for_hash,
             )
 
             # 3. Create backup directory (with per-device subfolder)

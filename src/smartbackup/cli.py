@@ -211,7 +211,7 @@ def _verify_manifest(
         return 1
 
     logger.info(f"Verifying {manifest.total_files} files...")
-    errors = manager.verify(manifest, target)
+    errors = manager.verify(manifest, target, verify_hashes=True)
 
     if not errors:
         logger.success("All files verified successfully!")
@@ -496,6 +496,16 @@ def backup_cmd(
         help="Compress backup into archive after copying (zip or tar.gz)",
         metavar="FORMAT",
     ),
+    use_hash: bool = typer.Option(
+        False,
+        "--hash",
+        help="Enable SHA-256 hashing for more accurate change detection (files up to 50MB)",
+    ),
+    hash_all: bool = typer.Option(
+        False,
+        "--hash-all",
+        help="Hash all files regardless of size (implies --hash, slower for large files)",
+    ),
     version: Optional[bool] = typer.Option(
         None,
         "-v",
@@ -555,6 +565,12 @@ def backup_cmd(
             raise typer.Exit(code=1)
         logger.info(f"Compression enabled: {compress}")
 
+    # Log hash mode
+    if hash_all:
+        logger.info("SHA-256 hashing enabled for ALL files (--hash-all)")
+    elif use_hash:
+        logger.info("SHA-256 hashing enabled for files up to 50MB (--hash)")
+
     # Load config and add exclusions
     config_manager = ConfigManager()
     if exclude:
@@ -583,6 +599,8 @@ def backup_cmd(
             use_manifest=not no_manifest,
             device_name=device_name,
             compress_format=compress,
+            use_hash=use_hash or hash_all,
+            hash_all=hash_all,
         )
 
         raise typer.Exit(code=0 if success else 1)

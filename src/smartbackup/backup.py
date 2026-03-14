@@ -35,6 +35,8 @@ class SmartBackup:
         use_manifest: bool = True,
         device_name: Optional[str] = None,
         compress_format: Optional[str] = None,
+        use_hash: bool = False,
+        hash_all: bool = False,
     ) -> bool:
         """
         Executes the backup.
@@ -46,6 +48,8 @@ class SmartBackup:
             use_manifest: Whether to use manifest for incremental backups
             device_name: Custom device name (default: auto-detected hostname)
             compress_format: Optional compression format ("zip" or "tar.gz")
+            use_hash: Enable SHA-256 hashing for change detection
+            hash_all: Hash all files regardless of size (implies use_hash)
 
         Returns:
             True if successful, False on errors
@@ -95,7 +99,8 @@ class SmartBackup:
             backup_folder_name="Documents-Backup",
             device_name=resolved_device_name,
             max_workers=min(8, (os.cpu_count() or 4)),
-            use_hash_verification=False,  # Faster without
+            use_hash_verification=use_hash or hash_all,
+            hash_all_files=hash_all,
             verbose=True,
             use_manifest=use_manifest,
             compress_format=compress_format,

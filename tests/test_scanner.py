@@ -176,13 +176,13 @@ class TestFileScanner:
         """Scanner should calculate hash when enabled."""
         filter = ExclusionFilter(set(), set())
         logger = BackupLogger(verbose=False)
-        scanner = FileScanner(filter, logger, use_hash=True, min_size_for_hash=0)
+        scanner = FileScanner(filter, logger, use_hash=True, max_size_for_hash=50 * 1024 * 1024)
 
         files = scanner.scan(source_dir)
 
         file_info = files[Path("file1.txt")]
         assert file_info.file_hash is not None
-        assert len(file_info.file_hash) == 32  # MD5 hex length
+        assert len(file_info.file_hash) == 64  # SHA-256 hex length
 
     def test_scan_without_hash(self, source_dir: Path):
         """Scanner should not calculate hash when disabled."""

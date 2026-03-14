@@ -115,8 +115,9 @@ class BackupConfig:
     exclusions: Set[str] = field(default_factory=lambda: DEFAULT_EXCLUSIONS.copy())
     excluded_extensions: Set[str] = field(default_factory=lambda: EXCLUDED_EXTENSIONS.copy())
     max_workers: int = 4
-    use_hash_verification: bool = False  # Faster without, more accurate with
-    min_file_size_for_hash: int = 1024 * 1024  # 1MB - only hash large files
+    use_hash_verification: bool = False  # Enable SHA-256 hashing for change detection
+    hash_all_files: bool = False  # Hash all files regardless of size (requires use_hash_verification)
+    max_file_size_for_hash: int = 50 * 1024 * 1024  # 50MB - only hash files up to this size
     log_to_file: bool = True
     verbose: bool = True
     # Manifest options

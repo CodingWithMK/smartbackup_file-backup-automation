@@ -9,6 +9,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional
 
+import hashlib
+
 from smartbackup.models import FileInfo
 
 
@@ -90,7 +92,7 @@ class ManifestEntry:
             return True
 
         # Mtime changed = likely changed
-        if file_info.mtime > self.mtime:
+        if file_info.mtime != self.mtime:
             return True
 
         # If both have hashes, compare them
@@ -114,6 +116,7 @@ class Manifest:
     updated: datetime = field(default_factory=datetime.now)
     source: str = ""
     hostname: str = ""  # Device hostname for identification
+    hash_algorithm: str = "sha256"  # Hash algorithm used for file hashes
     backup_count: int = 0
     entries: Dict[str, ManifestEntry] = field(default_factory=dict)
 
@@ -160,6 +163,7 @@ class Manifest:
             "updated": self.updated.isoformat(),
             "source": self.source,
             "hostname": self.hostname,
+            "hash_algorithm": self.hash_algorithm,
             "backup_count": self.backup_count,
             "total_files": self.total_files,
             "total_size": self.total_size,
@@ -176,6 +180,7 @@ class Manifest:
             updated=datetime.fromisoformat(data.get("updated", datetime.now().isoformat())),
             source=data.get("source", ""),
             hostname=data.get("hostname", ""),
+            hash_algorithm=data.get("hash_algorithm", "md5"),  # old manifests used MD5
             backup_count=data.get("backup_count", 0),
         )
 
@@ -373,13 +378,28 @@ class ManifestManager(ABC):
 
         return manifest
 
-    def verify(self, manifest: Manifest, backup_target: Path) -> List[str]:
+    @staticmethod
+    def _hash_file(path: Path, chunk_size: int = 65536) -> str:
+        """Calculate SHA-256 hash of a file for verification."""
+        hasher = hashlib.sha256()
+        try:
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(chunk_size), b""):
+                    hasher.update(chunk)
+            return hasher.hexdigest()
+        except Exception:
+            return ""
+
+    def verify(
+        self, manifest: Manifest, backup_target: Path, verify_hashes: bool = False
+    ) -> List[str]:
         """
         Verify backup files against manifest.
 
         Args:
             manifest: The manifest to verify against
             backup_target: Path to the backup directory
+            verify_hashes: If True, re-hash files and compare against stored hashes
 
         Returns:
             List of verification errors (empty if all files match)
@@ -401,6 +421,14 @@ class ManifestManager(ABC):
                         f"Size mismatch: {entry.relative_path} "
                         f"(expected {entry.size}, got {stat.st_size})"
                     )
+                elif verify_hashes and entry.file_hash:
+                    actual_hash = self._hash_file(file_path)
+                    if actual_hash and actual_hash != entry.file_hash:
+                        errors.append(
+                            f"Hash mismatch: {entry.relative_path} "
+                            f"(expected {entry.file_hash[:16]}..., "
+                            f"got {actual_hash[:16]}...)"
+                        )
 
             except OSError as e:
                 errors.append(f"Error reading {entry.relative_path}: {e}")

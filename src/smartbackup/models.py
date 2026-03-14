@@ -33,7 +33,7 @@ class FileInfo:
         """Checks if the file needs to be updated."""
         if self.size != other.size:
             return True
-        if self.mtime > other.mtime:
+        if self.mtime != other.mtime:
             return True
         if use_hash and self.file_hash and other.file_hash:
             return self.file_hash != other.file_hash
