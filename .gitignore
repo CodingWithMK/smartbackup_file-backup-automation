@@ -39,6 +39,9 @@ _backup_logs/
 .smartbackup/
 .local_backup_temp/
 
+# OpenCode
+.opencode/
+
 # UV
 .uv/
 uv.lock
