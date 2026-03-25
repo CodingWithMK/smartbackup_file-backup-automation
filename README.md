@@ -47,7 +47,7 @@ Ever tried to backup your Documents folder only to wait hours because of massive
 | 💻 **Multi-Device** | Per-device backup folders — multiple machines share one drive safely |
 | 🔌 **Auto-Detection** | Automatically finds external drives |
 | 📝 **Detailed Logging** | Progress bar + log file on backup drive |
-| 🎯 **Zero Dependencies** | Pure Python, no pip installs required |
+| 🎯 **Minimal Dependencies** | Only requires few dependencies for CLI |
 | ⚙️ **Configurable** | Add custom exclusions as needed |
 
 ---
