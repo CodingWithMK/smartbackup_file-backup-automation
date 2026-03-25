@@ -160,7 +160,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Detailed logging saved to backup drive
 - Fallback options when no external drive found
 - Command-line interface with multiple options
-- Zero external dependencies (Python stdlib only)
+- Zero external dependencies (Python stdlib only) *Note: As of v0.4.0 'rich' and 'typer' were added as runtime dependencies for CLI*
 - Multi-threaded file copying for speed
 
 ### Known Limitations
