@@ -43,6 +43,7 @@ Ever tried to backup your Documents folder only to wait hours because of massive
 | 🔍 **Smart Filtering** | Auto-skips `node_modules`, `venv`, `.git`, `__pycache__`, etc. |
 | 📊 **Incremental Backup** | Only copies new or modified files |
 | 📋 **Manifest Tracking** | JSON manifest for 10x faster incremental backups |
+| 🔐 **SHA-256 Hashing** | Optional content-based change detection with tiered hashing |
 | 🔄 **Restore Support** | Full restore functionality with pattern filtering |
 | 💻 **Multi-Device** | Per-device backup folders — multiple machines share one drive safely |
 | 📦 **Compression** | Optional zip/tar.gz archives — compress during backup or afterward |
@@ -177,12 +178,42 @@ smartbackup compress --target /media/USB_DRIVE --format tar.gz --device-name "Wo
 smartbackup compress --target /media/USB_DRIVE --format zip --remove-source
 ```
 
+### SHA-256 Hashing
+
+By default, SmartBackup detects changes using file size and modification time (mtime). For more accurate change detection, you can enable SHA-256 content hashing:
+
+```bash
+# Enable SHA-256 hashing for files up to 50MB
+smartbackup --hash
+
+# Hash ALL files regardless of size (slower for large files)
+smartbackup --hash-all
+
+# Combine with other options
+smartbackup --hash --source ~/Projects --target /media/USB_DRIVE
+```
+
+**How tiered hashing works:**
+- `--hash`: Computes SHA-256 hash for files up to 50MB. Larger files are skipped for performance.
+- `--hash-all`: Hashes every file regardless of size. Use when content integrity is critical.
+
+**When to use hashing:**
+- When files may change without mtime updates (e.g., some network drives)
+- When you need content verification for backup integrity
+- When you want to detect bit-rot or silent data corruption
+
+**Performance notes:**
+- Hashing adds I/O overhead (reads entire file content)
+- Uses 64KB chunks for efficient memory usage
+- Hash values are stored in the manifest for future comparisons
+
 ### All Options
 
 ```
 usage: smartbackup [-h] [-s SOURCE] [-t TARGET] [-l LABEL] [--dry-run]
                    [-q] [--exclude PATTERN [PATTERN ...]] [--list-drives]
                    [--no-manifest] [--show-manifest] [--verify]
+                   [--hash] [--hash-all]
                    [--device-name NAME] [--list-devices]
                    [--compress FORMAT] [-v]
                    {restore,compress} ...
@@ -198,7 +229,9 @@ Options:
   --list-drives         Show available drives
   --no-manifest         Disable manifest tracking
   --show-manifest       Display manifest contents
-  --verify              Verify backup against manifest
+  --verify              Verify backup against manifest (with hash verification)
+  --hash                Enable SHA-256 hashing for files up to 50MB
+  --hash-all            Hash all files regardless of size (implies --hash)
   --device-name NAME    Custom device name (default: auto-detected hostname)
   --list-devices        List devices with backups on the target drive
   --compress FORMAT     Compress backup as "zip" or "tar.gz"
@@ -240,7 +273,8 @@ smartbackup restore --source /path/to/backup --overwrite
 # Show manifest information
 smartbackup --target /path/to/backup --show-manifest
 
-# Verify backup integrity against manifest
+# Verify backup integrity against manifest (checks file existence and sizes)
+# Also verifies SHA-256 hashes if they were recorded during backup
 smartbackup --target /path/to/backup --verify
 
 # Disable manifest tracking (use traditional change detection)
