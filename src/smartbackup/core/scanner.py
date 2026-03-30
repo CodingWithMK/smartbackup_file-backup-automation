@@ -96,12 +96,14 @@ class FileScanner:
         exclusion_filter: ExclusionFilter,
         logger: BackupLogger,
         use_hash: bool = False,
-        min_size_for_hash: int = 1024 * 1024,
+        hash_all: bool = False,
+        max_size_for_hash: int = 50 * 1024 * 1024,  # 50MB
     ):
         self.filter = exclusion_filter
         self.logger = logger
         self.use_hash = use_hash
-        self.min_size_for_hash = min_size_for_hash
+        self.hash_all = hash_all
+        self.max_size_for_hash = max_size_for_hash
         self._scan_count = 0
         self._excluded_count = 0
 
@@ -174,8 +176,9 @@ class FileScanner:
 
                             # Optional: Calculate hash
                             file_hash = None
-                            if self.use_hash and stat.st_size >= self.min_size_for_hash:
-                                file_hash = self._calculate_hash(path)
+                            if self.use_hash:
+                                if self.hash_all or stat.st_size <= self.max_size_for_hash:
+                                    file_hash = self._calculate_hash(path)
 
                             files[relative_path] = FileInfo(
                                 path=path,
@@ -193,9 +196,9 @@ class FileScanner:
         except PermissionError:
             self.logger.warning(f"Permission denied for: {current_path}")
 
-    def _calculate_hash(self, path: Path, chunk_size: int = 8192) -> str:
-        """Calculates MD5 hash of a file (fast, not cryptographically secure)."""
-        hasher = hashlib.md5()
+    def _calculate_hash(self, path: Path, chunk_size: int = 65536) -> str:
+        """Calculate SHA-256 hash of a file for integrity verification."""
+        hasher = hashlib.sha256()
         try:
             with open(path, "rb") as f:
                 for chunk in iter(lambda: f.read(chunk_size), b""):

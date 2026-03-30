@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-03-14
+
+### Added
+- **Compression Support**: Create compressed archives of backups in `zip` or `tar.gz` format
+  - New `--compress FORMAT` option on the backup command (e.g., `smartbackup --compress zip`)
+  - New `smartbackup compress` subcommand to compress existing uncompressed backups after the fact
+  - Options: `--target`, `--format`, `--device-name`, `--remove-source`
+  - Archives are named `<device-name>_<YYYYMMDD_HHMMSS>.<ext>` and placed alongside device folders
+  - Atomic writes via temp files to prevent partial archives on failure
+- **New module: `core/compressor.py`** — `BackupCompressor` class with full zip/tar.gz support
+- **SHA-256 Hashing**: Optional integrity-based change detection
+  - `--hash` flag enables SHA-256 hashing for files up to 50MB
+  - `--hash-all` flag hashes all files regardless of size (implies `--hash`)
+  - Hash algorithm recorded in manifest (`hash_algorithm` field) for forward compatibility
+- **Hash Verification**: `--verify` now checks file content integrity via SHA-256
+  - Re-hashes backup files and compares against stored manifest hashes
+  - Reports hash mismatches (corrupted files) alongside size mismatches
+
+### Changed
+- Version updated to 0.5.0 across all files
+- Hash algorithm upgraded from MD5 to SHA-256 (collision-resistant)
+- Hash chunk size increased from 8KB to 64KB for better I/O throughput
+- `min_file_size_for_hash` replaced with `max_file_size_for_hash` (50MB default)
+  - Old behavior: hash files ABOVE 1MB (hashed large files, skipped small ones)
+  - New behavior: hash files UP TO 50MB (hashes small/medium files, skips huge ones)
+- `mtime` comparison changed from `>` to `!=` in both `ManifestEntry.has_changed()` and `FileInfo.needs_update()` to catch backward clock adjustments
+
+### Fixed
+- `ManifestEntry.has_changed()` now detects files with older mtime (clock skew, timezone changes)
+- `FileInfo.needs_update()` now detects backward mtime changes
+- `--verify` now actually verifies file content hashes, not just existence and size
+- `use_hash_verification` config field is no longer hardcoded to `False` in `backup.py`
+
 ## [0.4.0] - 2026-02-24
 
 ### Changed
@@ -127,7 +160,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Detailed logging saved to backup drive
 - Fallback options when no external drive found
 - Command-line interface with multiple options
-- Zero external dependencies (Python stdlib only) *Note: As of v0.4.0 'rich' and 'typer' were added as runtime dependencies for CLI improvements*
+- Zero external dependencies (Python stdlib only) *Note: As of v0.4.0 'rich' and 'typer' were added as runtime dependencies for CLI*
 - Multi-threaded file copying for speed
 
 ### Known Limitations
@@ -139,10 +172,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Roadmap
 
-### v0.5.0 (Planned)
-- [ ] Compression support (zip/tar.gz)
+### v0.5.0
+- [x] Compression support (zip/tar.gz)
+- [x] SHA-256 tiered hashing with `--hash` / `--hash-all` CLI flags
+- [x] Hash-based verification in `--verify`
 - [ ] SQLite manifest for large directories (100K+ files)
-- [ ] Quick hash comparison (xxhash/blake3)
 
 ### v0.6.0 (Planned)
 - [ ] Encryption support for sensitive files

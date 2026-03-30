@@ -63,8 +63,9 @@ class BackupEngine:
             scanner = FileScanner(
                 exclusion_filter,
                 self.logger,
-                self.config.use_hash_verification,
-                self.config.min_file_size_for_hash,
+                use_hash=self.config.use_hash_verification,
+                hash_all=self.config.hash_all_files,
+                max_size_for_hash=self.config.max_file_size_for_hash,
             )
 
             # 3. Create backup directory (with per-device subfolder)
@@ -145,6 +146,20 @@ class BackupEngine:
                     )
                 else:
                     self.logger.warning("Failed to save manifest")
+
+            # 10. Compress backup if requested
+            if self.config.compress_format:
+                from smartbackup.core.compressor import BackupCompressor
+
+                compressor = BackupCompressor(self.logger)
+                archive_name = compressor.get_archive_name(
+                    self.config.device_name or "backup",
+                    self.config.compress_format,
+                )
+                archive_path = backup_root / archive_name
+                compressor.compress(
+                    backup_target, archive_path, self.config.compress_format
+                )
 
         except Exception as e:
             self.logger.error(f"Backup error: {e}")
