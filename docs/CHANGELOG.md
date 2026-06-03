@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-06-03
+
+### Fixed
+- **Robust Backup Migration**: Fixed crashes during legacy flat-layout to per-device migration by adding error handling for disappearing files (e.g., `.DS_Store`).
+- **Hard Sync (True Synchronization)**: Enabled synchronization of deletions. Files deleted on the source are now automatically removed from the backup and the manifest.
+- **Data Collision Resolution**: Implemented aggressive handling for file-to-directory (and vice versa) type changes, preventing `FileNotFoundError` and `FileExistsError`.
+- **ExFAT/FAT32 Support**: Fixed "OS error 22 (Invalid argument)" on non-native file systems by adding a fallback mechanism from `shutil.copy2` to `shutil.copy` with manual timestamp preservation.
+
 ## [0.5.0] - 2026-03-14
 
 ### Added

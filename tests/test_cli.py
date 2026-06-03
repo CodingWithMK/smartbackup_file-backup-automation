@@ -15,8 +15,8 @@ class TestCLIVersion:
     """Tests for CLI version."""
 
     def test_version_is_0_5_0(self):
-        """Version should be 0.5.0."""
-        assert __version__ == "0.5.0"
+        """Version should be 0.5.1."""
+        assert __version__ == "0.5.1"
 
 
 class TestListDrives:

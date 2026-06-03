@@ -20,7 +20,7 @@ from smartbackup.platform.identity import get_device_name
 from smartbackup.platform.resolver import PathResolver
 from smartbackup.ui.logger import BackupLogger
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 console = Console(highlight=False)
 

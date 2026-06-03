@@ -287,7 +287,7 @@ smartbackup --no-manifest
 
 ```
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║                    Intelligent Backup System v0.5.0                          ║
+║                    Intelligent Backup System v0.5.1                          ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
 ℹ  [2024-01-15 09:30:22] Source directory: /Users/dev/Documents
