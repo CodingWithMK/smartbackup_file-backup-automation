@@ -127,10 +127,10 @@ class BackupEngine:
             if modified_files:
                 self._copy_files(modified_files, backup_target, FileAction.UPDATED)
 
-            # Optional: Delete old files
-            # (Commented out for safety - can be enabled)
-            # if deleted_paths:
-            #     self._delete_files_by_path(deleted_paths, backup_target)
+            # Delete old files
+            if deleted_paths:
+                self.logger.info(f"Removing {len(deleted_paths)} obsolete files/folders...")
+                self._delete_files([backup_target / p for p in deleted_paths])
 
             # Count skipped
             self.result.skipped_files = len(source_files) - len(new_files) - len(modified_files)
@@ -138,7 +138,7 @@ class BackupEngine:
             # 9. Update manifest with backed up files
             if self.config.use_manifest and self._manifest_manager and self._manifest:
                 self._manifest = self._manifest_manager.update_from_backup(
-                    self._manifest, self._backed_up_files, deleted_paths=None
+                    self._manifest, self._backed_up_files, deleted_paths=deleted_paths
                 )
                 if self._manifest_manager.save(self._manifest):
                     self.logger.success(
@@ -210,10 +210,20 @@ class BackupEngine:
         for item in backup_root.iterdir():
             if item.name == temp_name:
                 continue
-            item.rename(temp_dir / item.name)
+            
+            try:
+                item.rename(temp_dir / item.name)
+            except (FileNotFoundError, OSError) as e:
+                self.logger.warning(f"Could not migrate {item.name}: {e}")
 
         # Rename temp dir to device folder
-        temp_dir.rename(device_folder)
+        try:
+            temp_dir.rename(device_folder)
+        except OSError as e:
+            self.logger.error(f"Failed to finalize migration to {device_name}: {e}")
+            # Try to roll back some files from temp_dir if possible, 
+            # but usually this is a fatal collision or permission issue.
+            return
 
         self.logger.success("Migration complete!")
 
@@ -298,12 +308,23 @@ class BackupEngine:
     def _copy_single_file(
         self, file_info: FileInfo, backup_target: Path, action: FileAction
     ) -> Tuple[bool, str]:
-        """Copies a single file."""
+        """Copies a single file, handling type collisions."""
+        import shutil
         try:
             dest_path = backup_target / file_info.relative_path
 
+            # Collision Handling 1: Parent is a file, but needs to be a directory
+            if dest_path.parent.exists() and not dest_path.parent.is_dir():
+                self.logger.warning(f"Collision: {dest_path.parent} is a file, but should be a directory. Deleting...")
+                dest_path.parent.unlink()
+
             # Create target directory
             dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Collision Handling 2: Target is a directory, but needs to be a file
+            if dest_path.exists() and dest_path.is_dir():
+                self.logger.warning(f"Collision: {dest_path} is a directory, but should be a file. Deleting...")
+                shutil.rmtree(dest_path)
 
             # Copy file with metadata
             shutil.copy2(file_info.path, dest_path)
@@ -318,11 +339,18 @@ class BackupEngine:
             return False, str(e)
 
     def _delete_files(self, files: List[Path]) -> None:
-        """Deletes files that no longer exist in source."""
+        """Deletes files/directories that no longer exist in source."""
+        import shutil
         for path in files:
+            if not path.exists():
+                continue
             try:
-                if path.is_file():
+                if path.is_file() or path.is_symlink():
                     path.unlink()
+                    self.result.deleted_files += 1
+                    self.logger.file_action(FileAction.DELETED, path)
+                elif path.is_dir():
+                    shutil.rmtree(path)
                     self.result.deleted_files += 1
                     self.logger.file_action(FileAction.DELETED, path)
             except Exception as e:
