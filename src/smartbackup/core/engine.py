@@ -326,8 +326,20 @@ class BackupEngine:
                 self.logger.warning(f"Collision: {dest_path} is a directory, but should be a file. Deleting...")
                 shutil.rmtree(dest_path)
 
-            # Copy file with metadata
-            shutil.copy2(file_info.path, dest_path)
+            # Copy file with metadata, with fallback for file systems that don't support all attributes
+            try:
+                shutil.copy2(file_info.path, dest_path)
+            except (OSError, PermissionError) as e:
+                # Fallback: basic copy + manual mtime preservation if copy2 fails (common on ExFAT/FAT32)
+                self.logger.warning(f"Full metadata copy failed for {file_info.relative_path}: {e}. Falling back to basic copy.")
+                shutil.copy(file_info.path, dest_path)
+                
+                # Try to preserve at least the modification time
+                try:
+                    import os
+                    os.utime(dest_path, (file_info.mtime, file_info.mtime))
+                except Exception as ut_e:
+                    self.logger.warning(f"Could not preserve timestamp for {file_info.relative_path}: {ut_e}")
 
             return True, "OK"
 
