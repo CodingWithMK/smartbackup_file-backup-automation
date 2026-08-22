@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-08-22
+
+### Added
+- **USB Drive Auto-Detect & Monitoring Daemon**:
+  - Automatically scans and listens for attached storage media across Windows, macOS, and Linux without native C dependencies.
+  - New `smartbackup watch` command for foreground monitoring with configurable polling interval (`--interval`) and debounce cooldown (`--cooldown`).
+  - **New module: `platform/watcher.py`**:
+    - `DriveMatcher`: Identifies SmartBackup targets by checking `Documents-Backup/<hostname>/.smartbackup_manifest.json`, legacy flat manifests, and preferred target drive labels. Resilient to BitLocker / locked drive errors.
+    - `DebounceLock`: Enforces a 300-second cooldown timer and suppresses popup bursts across multi-partition drives. Persists state to `watcher_state.json`.
+    - `DeviceWatcher`: Polling loop inspecting OS mount points (`GetLogicalDrives` on Windows, `/Volumes` on macOS, `/media` and `/run/media` on Linux).
+- **Cross-Platform Interactive Terminal Spawner**:
+  - **New module: `platform/terminal.py`**:
+    - `TerminalSpawner`: Launches native interactive terminal executing `python -m smartbackup --target <path> --prompt`.
+    - Windows fallback chain: `wt.exe new-tab` -> `cmd.exe /c start` -> `powershell.exe`.
+    - macOS AppleScript integration via `osascript` targeting `Terminal.app` or `iTerm2` (with fallback to `open -a Terminal`).
+    - Linux terminal emulator detection (`x-terminal-emulator`, `gnome-terminal`, `kitty`, `alacritty`, `konsole`, `xfce4-terminal`, `xterm`).
+    - Headless / SSH session auto-detection to prevent GUI spawn errors.
+- **Interactive Prompt Mode (`--prompt`)**:
+  - Formatted Rich panel rendering drive info, total capacity, free space, and device ID.
+  - Interactive prompt `[Y/n/d]` (Yes / No / Dry-run).
+  - 5-second automatic pause on completion before closing the terminal window.
+- **OS Background Service Management (`smartbackup daemon`)**:
+  - `smartbackup daemon install`: Installs and activates background service (macOS LaunchAgent plist, Windows Task Scheduler logon task, Linux systemd user service).
+  - `smartbackup daemon uninstall`: Unregisters and removes the background service.
+  - `smartbackup daemon status`: Queries and displays status, PID, and service file location.
+
+### Changed
+- Version bumped to 0.6.0 across all package manifests and source files.
+- `BackupConfig` and `ConfigManager` updated with `auto_watch_cooldown` and `preferred_terminal` settings.
+- `SmartBackup.run()` now accepts `dry_run: bool = False` and seamlessly switches to `DryRunBackupEngine`.
+
 ## [0.5.1] - 2026-06-03
 
 ### Fixed

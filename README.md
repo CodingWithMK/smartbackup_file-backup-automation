@@ -279,6 +279,17 @@ smartbackup --target /path/to/backup --verify
 
 # Disable manifest tracking (use traditional change detection)
 smartbackup --no-manifest
+
+# Run in interactive prompt mode (used by auto-detect spawner)
+smartbackup --target /Volumes/MyBackup --prompt
+
+# Run the foreground USB drive watcher daemon
+smartbackup watch --interval 2.5 --cooldown 300
+
+# Manage OS background watcher daemon service
+smartbackup daemon install      # Register & start background service
+smartbackup daemon status       # Check service status and PID
+smartbackup daemon uninstall    # Stop & remove background service
 ```
 
 ---
@@ -287,7 +298,7 @@ smartbackup --no-manifest
 
 ```
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║                    Intelligent Backup System v0.5.1                          ║
+║                    Intelligent Backup System v0.6.0                          ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
 ℹ  [2024-01-15 09:30:22] Source directory: /Users/dev/Documents

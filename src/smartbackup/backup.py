@@ -12,7 +12,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 from smartbackup.config import BackupConfig
-from smartbackup.core.engine import BackupEngine
+from smartbackup.core.engine import BackupEngine, DryRunBackupEngine
 from smartbackup.handlers import FallbackHandler
 from smartbackup.platform.devices import DeviceDetector
 from smartbackup.platform.identity import get_device_name
@@ -37,6 +37,7 @@ class SmartBackup:
         compress_format: Optional[str] = None,
         use_hash: bool = False,
         hash_all: bool = False,
+        dry_run: bool = False,
     ) -> bool:
         """
         Executes the backup.
@@ -50,6 +51,7 @@ class SmartBackup:
             compress_format: Optional compression format ("zip" or "tar.gz")
             use_hash: Enable SHA-256 hashing for change detection
             hash_all: Hash all files regardless of size (implies use_hash)
+            dry_run: Simulate backup without copying files
 
         Returns:
             True if successful, False on errors
@@ -107,7 +109,8 @@ class SmartBackup:
         )
 
         # Perform backup
-        engine = BackupEngine(config, self.logger)
+        engine_cls = DryRunBackupEngine if dry_run else BackupEngine
+        engine = engine_cls(config, self.logger)
         result = engine.run_backup()
 
         # Summary
@@ -137,7 +140,7 @@ class SmartBackup:
 
         subtitle = Text(justify="center")
         subtitle.append("\n\n", style="")
-        subtitle.append("Intelligent Backup System v0.5.1\n", style="bold white")
+        subtitle.append("Intelligent Backup System v0.6.0\n", style="bold white")
         subtitle.append("Cross-Platform  •  Incremental  •  Efficient", style="dim")
 
         content = Group(Align.center(art), subtitle)

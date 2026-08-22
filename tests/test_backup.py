@@ -39,9 +39,9 @@ class TestVersion:
         parts = __version__.split(".")
         assert len(parts) >= 2
 
-    def test_version_is_0_5_0(self):
-        """Version should be 0.5.1."""
-        assert __version__ == "0.5.1"
+    def test_version_is_0_6_0(self):
+        """Version should be 0.6.0."""
+        assert __version__ == "0.6.0"
 
 
 class TestImports:
@@ -94,6 +94,20 @@ class TestImports:
     def test_fallback_handler_importable(self):
         """FallbackHandler should be importable."""
         assert FallbackHandler is not None
+
+    def test_watcher_classes_importable(self):
+        """Watcher and terminal classes should be importable."""
+        from smartbackup import (
+            DebounceLock,
+            DeviceWatcher,
+            DriveMatcher,
+            TerminalSpawner,
+        )
+
+        assert DriveMatcher is not None
+        assert DebounceLock is not None
+        assert DeviceWatcher is not None
+        assert TerminalSpawner is not None
 
 
 class TestPathResolver:

@@ -206,3 +206,30 @@ class TestConfigManager:
 
         name = manager.get_device_name()
         assert name is None
+
+    def test_set_and_get_auto_watch_cooldown(self):
+        """Auto watch cooldown should be saveable and loadable."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = ConfigManager()
+            manager.config_dir = Path(tmpdir)
+            manager.config_file = Path(tmpdir) / "config.json"
+
+            manager.set_auto_watch_cooldown(120)
+            assert manager.get_auto_watch_cooldown() == 120
+
+    def test_get_auto_watch_cooldown_default_300(self):
+        """Auto watch cooldown should default to 300."""
+        manager = ConfigManager()
+        manager.config_file = Path("/tmp/nonexistent_config.json")
+        assert manager.get_auto_watch_cooldown() == 300
+
+    def test_set_and_get_preferred_terminal(self):
+        """Preferred terminal should be saveable and loadable."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = ConfigManager()
+            manager.config_dir = Path(tmpdir)
+            manager.config_file = Path(tmpdir) / "config.json"
+
+            manager.set_preferred_terminal("iTerm2")
+            assert manager.get_preferred_terminal() == "iTerm2"
+

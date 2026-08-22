@@ -16,7 +16,7 @@ Quick Start:
     >>> backup.run()
 """
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 __author__ = "Muhammed Musab Kaya - @CodingWithMK"
 __license__ = "MIT"
 
@@ -43,6 +43,8 @@ from smartbackup.platform.devices import DeviceDetector
 from smartbackup.platform.identity import get_device_name
 from smartbackup.platform.resolver import PathResolver
 from smartbackup.platform.scheduler import SchedulerHelper
+from smartbackup.platform.terminal import TerminalSpawner
+from smartbackup.platform.watcher import DebounceLock, DeviceWatcher, DriveMatcher
 from smartbackup.ui.colors import Colors
 from smartbackup.ui.logger import BackupLogger
 
@@ -84,6 +86,10 @@ __all__ = [
     "DeviceDetector",
     "SchedulerHelper",
     "get_device_name",
+    "DriveMatcher",
+    "DebounceLock",
+    "DeviceWatcher",
+    "TerminalSpawner",
     # UI
     "BackupLogger",
     "Colors",

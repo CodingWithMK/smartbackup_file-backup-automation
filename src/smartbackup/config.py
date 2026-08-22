@@ -7,10 +7,10 @@ import os
 import platform
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Set
+from typing import Optional
 
 # Default exclusions for developer projects
-DEFAULT_EXCLUSIONS: Set[str] = {
+DEFAULT_EXCLUSIONS: set[str] = {
     # Node.js / JavaScript
     "node_modules",
     ".npm",
@@ -87,7 +87,7 @@ DEFAULT_EXCLUSIONS: Set[str] = {
 }
 
 # File extensions that should always be skipped
-EXCLUDED_EXTENSIONS: Set[str] = {
+EXCLUDED_EXTENSIONS: set[str] = {
     ".pyc",
     ".pyo",
     ".pyd",  # Python compiled
@@ -112,8 +112,8 @@ class BackupConfig:
     backup_path: Path
     backup_folder_name: str = "Documents-Backup"
     device_name: str = ""  # Device identifier for per-device subfolder
-    exclusions: Set[str] = field(default_factory=lambda: DEFAULT_EXCLUSIONS.copy())
-    excluded_extensions: Set[str] = field(default_factory=lambda: EXCLUDED_EXTENSIONS.copy())
+    exclusions: set[str] = field(default_factory=lambda: DEFAULT_EXCLUSIONS.copy())
+    excluded_extensions: set[str] = field(default_factory=lambda: EXCLUDED_EXTENSIONS.copy())
     max_workers: int = 4
     use_hash_verification: bool = False  # Enable SHA-256 hashing for change detection
     hash_all_files: bool = False  # Hash all files regardless of size (requires use_hash_verification)
@@ -125,6 +125,8 @@ class BackupConfig:
     manifest_format: str = "json"  # "json" or "sqlite" (future)
     # Compression options
     compress_format: Optional[str] = None  # None (no compression), "zip", or "tar.gz"
+    # Watcher options
+    auto_watch_cooldown: int = 300  # Default debounce cooldown in seconds (5 minutes)
 
 
 class ConfigManager:
@@ -154,7 +156,7 @@ class ConfigManager:
         """Loads the configuration."""
         if self.config_file.exists():
             try:
-                with open(self.config_file, "r", encoding="utf-8") as f:
+                with open(self.config_file, encoding="utf-8") as f:
                     return json.load(f)
             except Exception:
                 return {}
@@ -166,7 +168,7 @@ class ConfigManager:
         with open(self.config_file, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, default=str)
 
-    def get_exclusions(self) -> Set[str]:
+    def get_exclusions(self) -> set[str]:
         """Loads custom exclusions."""
         config = self.load()
         custom = set(config.get("exclusions", []))
@@ -201,3 +203,25 @@ class ConfigManager:
         """Load custom device name (None = use auto-detected hostname)."""
         config = self.load()
         return config.get("device_name")
+
+    def set_auto_watch_cooldown(self, seconds: int) -> None:
+        """Save auto-watch debounce cooldown in seconds."""
+        config = self.load()
+        config["auto_watch_cooldown"] = seconds
+        self.save(config)
+
+    def get_auto_watch_cooldown(self) -> int:
+        """Load auto-watch debounce cooldown in seconds (default 300)."""
+        config = self.load()
+        return int(config.get("auto_watch_cooldown", 300))
+
+    def set_preferred_terminal(self, terminal: str) -> None:
+        """Save preferred terminal emulator application."""
+        config = self.load()
+        config["preferred_terminal"] = terminal
+        self.save(config)
+
+    def get_preferred_terminal(self) -> Optional[str]:
+        """Load preferred terminal emulator application."""
+        config = self.load()
+        return config.get("preferred_terminal")

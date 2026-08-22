@@ -4,13 +4,15 @@ CLI - Command line interface for SmartBackup.
 Modernised with Typer and Rich for a polished developer experience.
 """
 
-import sys
+import shutil
+import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.prompt import Prompt
 from rich.table import Table
 
 from smartbackup.backup import SmartBackup
@@ -18,9 +20,12 @@ from smartbackup.config import ConfigManager
 from smartbackup.manifest.json_manifest import JsonManifestManager
 from smartbackup.platform.identity import get_device_name
 from smartbackup.platform.resolver import PathResolver
+from smartbackup.platform.scheduler import SchedulerHelper
+from smartbackup.platform.terminal import TerminalSpawner
+from smartbackup.platform.watcher import DeviceWatcher
 from smartbackup.ui.logger import BackupLogger
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 console = Console(highlight=False)
 
@@ -31,6 +36,15 @@ app = typer.Typer(
     rich_markup_mode="rich",
     no_args_is_help=False,
 )
+
+daemon_app = typer.Typer(
+    name="daemon",
+    help="Manage OS background watcher daemon service",
+    add_completion=False,
+    rich_markup_mode="rich",
+    no_args_is_help=True,
+)
+app.add_typer(daemon_app, name="daemon")
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +250,7 @@ def restore_cmd(
     target: Optional[Path] = typer.Option(
         None, "-t", "--target", help="Target directory to restore to"
     ),
-    pattern: Optional[List[str]] = typer.Option(
+    pattern: Optional[list[str]] = typer.Option(
         None, "-p", "--pattern", help="Glob patterns to filter files"
     ),
     overwrite: bool = typer.Option(False, "--overwrite", help="Overwrite existing files"),
@@ -263,7 +277,7 @@ def restore_cmd(
 def _handle_restore(
     source: Path,
     target: Optional[Path],
-    pattern: Optional[List[str]],
+    pattern: Optional[list[str]],
     overwrite: bool,
     dry_run: bool,
     list_files: bool,
@@ -450,6 +464,137 @@ def _handle_compress(
 
 
 # ---------------------------------------------------------------------------
+# Watch & Daemon sub-commands
+# ---------------------------------------------------------------------------
+
+
+@app.command("watch", help="Watch for external backup storage media and trigger prompts")
+def watch_cmd(
+    interval: float = typer.Option(2.5, "-i", "--interval", help="Polling interval in seconds"),
+    cooldown: int = typer.Option(300, "-c", "--cooldown", help="Cooldown in seconds between drive prompts"),
+) -> None:
+    """Run foreground drive watcher daemon."""
+    _handle_watch(interval=interval, cooldown=cooldown)
+
+
+def _handle_watch(interval: float = 2.5, cooldown: int = 300) -> None:
+    """Foreground drive watcher logic."""
+    console.print(
+        Panel(
+            f"[bold green]SmartBackup Drive Watcher Active[/bold green]\n\n"
+            f"[dim]Polling interval:[/dim] {interval}s\n"
+            f"[dim]Debounce cooldown:[/dim] {cooldown}s\n\n"
+            f"Listening for attached external backup storage media...\n"
+            f"[dim]Press Ctrl+C to stop.[/dim]",
+            title="[bold cyan]SmartBackup Watcher[/bold cyan]",
+            border_style="cyan",
+            expand=False,
+        )
+    )
+    spawner = TerminalSpawner()
+    watcher = DeviceWatcher(
+        interval=interval,
+        cooldown=cooldown,
+        on_drive_detected=spawner.spawn_prompt,
+    )
+    try:
+        watcher.start(blocking=True)
+    except KeyboardInterrupt:
+        watcher.stop()
+        console.print("\n[yellow]Watcher stopped by user.[/yellow]")
+        raise typer.Exit(code=0)
+
+
+@daemon_app.command("install", help="Install and start the background watcher service")
+def daemon_install_cmd() -> None:
+    """Install the background auto-detect watcher daemon service."""
+    success, message = SchedulerHelper.install_daemon_service()
+    if success:
+        console.print(
+            Panel(
+                f"[bold green]Success:[/bold green] {message}",
+                title="[bold cyan]Daemon Installation[/bold cyan]",
+                border_style="green",
+                expand=False,
+            )
+        )
+        raise typer.Exit(code=0)
+    else:
+        console.print(
+            Panel(
+                f"[bold red]Error:[/bold red] {message}",
+                title="[bold red]Daemon Installation Failed[/bold red]",
+                border_style="red",
+                expand=False,
+            )
+        )
+        raise typer.Exit(code=1)
+
+
+@daemon_app.command("uninstall", help="Uninstall and stop the background watcher service")
+def daemon_uninstall_cmd() -> None:
+    """Uninstall the background auto-detect watcher daemon service."""
+    success, message = SchedulerHelper.uninstall_daemon_service()
+    if success:
+        console.print(
+            Panel(
+                f"[bold green]Success:[/bold green] {message}",
+                title="[bold cyan]Daemon Removal[/bold cyan]",
+                border_style="green",
+                expand=False,
+            )
+        )
+        raise typer.Exit(code=0)
+    else:
+        console.print(
+            Panel(
+                f"[bold red]Error:[/bold red] {message}",
+                title="[bold red]Daemon Removal Failed[/bold red]",
+                border_style="red",
+                expand=False,
+            )
+        )
+        raise typer.Exit(code=1)
+
+
+@daemon_app.command("status", help="Check the status of the background watcher service")
+def daemon_status_cmd() -> None:
+    """Query background watcher daemon service status."""
+    status = SchedulerHelper.get_daemon_status()
+    table = Table(
+        title="DAEMON SERVICE STATUS",
+        title_style="bold cyan",
+        border_style="cyan",
+        show_header=False,
+        expand=False,
+    )
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+
+    installed_str = "[green]Installed[/green]" if status["installed"] else "[red]Not Installed[/red]"
+    table.add_row("Installed", installed_str)
+
+    if status["running"]:
+        running_str = (
+            f"[bold green]Running[/bold green] (PID: {status['pid']})"
+            if status.get("pid")
+            else "[bold green]Running[/bold green]"
+        )
+    else:
+        running_str = "[yellow]Stopped[/yellow]"
+    table.add_row("Status", running_str)
+
+    if status.get("service_path"):
+        table.add_row("Service Path", status["service_path"])
+    table.add_row("Details", status.get("details", ""))
+
+    console.print()
+    console.print(table)
+    console.print()
+    raise typer.Exit(code=0)
+
+
+# ---------------------------------------------------------------------------
 # Main (default) command -- backup
 # ---------------------------------------------------------------------------
 
@@ -467,9 +612,12 @@ def backup_cmd(
         help="Target directory/drive (default: auto-detect external drive)",
     ),
     label: Optional[str] = typer.Option(None, "-l", "--label", help="Preferred target drive label"),
+    prompt: bool = typer.Option(
+        False, "--prompt", help="Run interactive prompt mode for detected drive"
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Simulate backup without copying files"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Minimal output"),
-    exclude: Optional[List[str]] = typer.Option(
+    exclude: Optional[list[str]] = typer.Option(
         None, "--exclude", help="Additional exclusion patterns"
     ),
     list_drives: bool = typer.Option(
@@ -551,6 +699,72 @@ def backup_cmd(
         code = _verify_manifest(target, device=device_name)
         raise typer.Exit(code=code)
 
+    # --- Interactive Prompt Flow (--prompt) ---
+    if prompt:
+        # Determine drive info
+        drive_path = target
+        if drive_path is None:
+            from smartbackup.platform.devices import DeviceDetector
+
+            detector = DeviceDetector(logger)
+            drive_path = detector.find_backup_device(required_space=100 * 1024 * 1024)
+
+        if drive_path is None:
+            logger.error("No backup medium found for prompt mode.")
+            time.sleep(3)
+            raise typer.Exit(code=1)
+
+        # Retrieve disk capacity info
+        try:
+            total, used, free = shutil.disk_usage(drive_path)
+            free_gb = free / (1024**3)
+            total_gb = total / (1024**3)
+            space_info = f"{free_gb:.1f} GB free of {total_gb:.1f} GB"
+        except Exception:
+            space_info = "Available"
+
+        source_display = source or PathResolver.get_documents_path()
+        dev_name = device_name or get_device_name()
+
+        banner_text = (
+            f"[bold cyan]Detected External Backup Drive[/bold cyan]\n\n"
+            f"[bold]Drive Path:[/bold]  [green]{drive_path}[/green]\n"
+            f"[bold]Capacity:[/bold]    {space_info}\n"
+            f"[bold]Source:[/bold]      {source_display}\n"
+            f"[bold]Device ID:[/bold]   [yellow]{dev_name}[/yellow]"
+        )
+
+        console.print()
+        console.print(
+            Panel(
+                banner_text,
+                title="[bold green]SmartBackup Auto-Detect[/bold green]",
+                border_style="green",
+                expand=False,
+            )
+        )
+        console.print()
+
+        try:
+            choice = Prompt.ask(
+                "[bold]Start backup now?[/bold] ([bold green]Y[/bold green]es / [bold red]n[/bold red]o / [bold yellow]d[/bold yellow]ry-run)",
+                default="y",
+            ).strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            console.print("\n[yellow]Backup cancelled by user.[/yellow]")
+            raise typer.Exit(code=0)
+
+        if choice in ("n", "no"):
+            console.print("[dim]Backup skipped by user.[/dim]")
+            raise typer.Exit(code=0)
+        elif choice in ("d", "dry-run", "dryrun"):
+            dry_run = True
+            logger.info("Executing backup in dry-run simulation mode...")
+        elif choice in ("y", "yes", ""):
+            dry_run = False
+        else:
+            console.print(f"[yellow]Unrecognized option '{choice}', proceeding with standard backup.[/yellow]")
+
     # --- Normal backup flow ---
 
     # Validate compression format if provided
@@ -601,12 +815,23 @@ def backup_cmd(
             compress_format=compress,
             use_hash=use_hash or hash_all,
             hash_all=hash_all,
+            dry_run=dry_run,
         )
+
+        if prompt:
+            console.print("\n[dim]Window will close automatically in 5 seconds...[/dim]")
+            time.sleep(5)
 
         raise typer.Exit(code=0 if success else 1)
 
     except typer.Exit:
         raise
+
+    except (FileNotFoundError, OSError) as e:
+        logger.error(f"Storage medium error (drive may have been disconnected): {e}")
+        if prompt:
+            time.sleep(3)
+        raise typer.Exit(code=1)
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Backup cancelled by user.[/yellow]")
@@ -617,6 +842,8 @@ def backup_cmd(
         import traceback
 
         traceback.print_exc()
+        if prompt:
+            time.sleep(5)
         raise typer.Exit(code=1)
 
 

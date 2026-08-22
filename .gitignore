@@ -45,3 +45,9 @@ _backup_logs/
 # UV
 .uv/
 uv.lock
+
+# ruff
+.ruff_cache/
+
+# Plans and Guides
+docs/plans/

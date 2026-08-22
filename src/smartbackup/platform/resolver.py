@@ -6,7 +6,6 @@ import os
 import platform
 import shutil
 from pathlib import Path
-from typing import List, Tuple
 
 
 class PathResolver:
@@ -55,7 +54,7 @@ class PathResolver:
             user_dirs = Path.home() / ".config" / "user-dirs.dirs"
             if user_dirs.exists():
                 try:
-                    with open(user_dirs, "r") as f:
+                    with open(user_dirs) as f:
                         for line in f:
                             if line.startswith("XDG_DOCUMENTS_DIR"):
                                 path = line.split("=")[1].strip().strip('"')
@@ -73,14 +72,14 @@ class PathResolver:
             return Path.home() / "Documents"
 
     @staticmethod
-    def find_external_drives() -> List[Tuple[Path, str, int]]:
+    def find_external_drives() -> list[tuple[Path, str, int]]:
         """
         Finds all external storage media.
 
         Returns:
             List of tuples (path, label, free space in bytes)
         """
-        drives: List[Tuple[Path, str, int]] = []
+        drives: list[tuple[Path, str, int]] = []
         system = platform.system()
 
         if system == "Windows":
@@ -93,9 +92,9 @@ class PathResolver:
         return drives
 
     @staticmethod
-    def _find_windows_drives() -> List[Tuple[Path, str, int]]:
+    def _find_windows_drives() -> list[tuple[Path, str, int]]:
         """Finds external drives on Windows."""
-        drives: List[Tuple[Path, str, int]] = []
+        drives: list[tuple[Path, str, int]] = []
         try:
             import ctypes
 
@@ -148,9 +147,9 @@ class PathResolver:
         return drives
 
     @staticmethod
-    def _find_macos_drives() -> List[Tuple[Path, str, int]]:
+    def _find_macos_drives() -> list[tuple[Path, str, int]]:
         """Finds external drives on macOS."""
-        drives: List[Tuple[Path, str, int]] = []
+        drives: list[tuple[Path, str, int]] = []
         volumes_path = Path("/Volumes")
         excluded_names = {
             "Macintosh HD",
@@ -172,9 +171,9 @@ class PathResolver:
         return drives
 
     @staticmethod
-    def _find_linux_drives() -> List[Tuple[Path, str, int]]:
+    def _find_linux_drives() -> list[tuple[Path, str, int]]:
         """Finds external drives on Linux."""
-        drives: List[Tuple[Path, str, int]] = []
+        drives: list[tuple[Path, str, int]] = []
 
         # Common mount points for external media
         mount_points = [
