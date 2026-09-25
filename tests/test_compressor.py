@@ -575,6 +575,7 @@ class TestCompressCLI:
                     command_names.append(cmd.name)
 
         # Also check the click group directly
+        import typer.main
 
         try:
             click_app = typer.main.get_command(app)
