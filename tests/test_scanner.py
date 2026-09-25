@@ -4,8 +4,6 @@ Tests for the scanner module.
 
 from pathlib import Path
 
-import pytest
-
 from smartbackup.config import DEFAULT_EXCLUSIONS, EXCLUDED_EXTENSIONS
 from smartbackup.core.scanner import ExclusionFilter, FileScanner
 from smartbackup.ui.logger import BackupLogger
@@ -201,7 +199,7 @@ class TestFileScanner:
         logger = BackupLogger(verbose=False)
         scanner = FileScanner(filter, logger)
 
-        files = scanner.scan(source_with_exclusions)
+        scanner.scan(source_with_exclusions)
 
         # Should have found some files and excluded some
         assert scanner._scan_count > 0

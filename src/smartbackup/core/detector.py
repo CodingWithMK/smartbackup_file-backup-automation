@@ -3,7 +3,6 @@ ChangeDetector - Detects changes between source and target files.
 """
 
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
 
 from smartbackup.models import FileInfo
 from smartbackup.ui.logger import BackupLogger
@@ -24,10 +23,10 @@ class ChangeDetector:
 
     def detect_changes(
         self,
-        source_files: Dict[Path, FileInfo],
+        source_files: dict[Path, FileInfo],
         backup_path: Path,
         logger: BackupLogger,
-    ) -> Tuple[List[FileInfo], List[FileInfo], List[Path]]:
+    ) -> tuple[list[FileInfo], list[FileInfo], list[Path]]:
         """
         Compares source and backup files.
 
@@ -36,12 +35,12 @@ class ChangeDetector:
         """
         logger.section("Analyzing changes...")
 
-        new_files: List[FileInfo] = []
-        modified_files: List[FileInfo] = []
-        deleted_files: List[Path] = []
+        new_files: list[FileInfo] = []
+        modified_files: list[FileInfo] = []
+        deleted_files: list[Path] = []
 
         # Scan existing backup files
-        existing_backup_files: Set[Path] = set()
+        existing_backup_files: set[Path] = set()
         if backup_path.exists():
             for path in backup_path.rglob("*"):
                 if path.is_file():

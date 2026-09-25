@@ -5,8 +5,6 @@ Tests for the models module.
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import pytest
-
 from smartbackup.models import BackupResult, FileAction, FileInfo
 
 

@@ -8,7 +8,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Optional
 
 from smartbackup.config import BackupConfig
 from smartbackup.core.detector import ChangeDetector
@@ -46,7 +46,7 @@ class BackupEngine:
         self._total_files = 0
         self._manifest_manager: Optional[ManifestManager] = None
         self._manifest: Optional[Manifest] = None
-        self._backed_up_files: List[FileInfo] = []
+        self._backed_up_files: list[FileInfo] = []
         self._backup_target: Optional[Path] = None
 
     def run_backup(self) -> BackupResult:
@@ -226,7 +226,7 @@ class BackupEngine:
         for item in backup_root.iterdir():
             if item.name == temp_name:
                 continue
-            
+
             try:
                 item.rename(temp_dir / item.name)
             except (FileNotFoundError, OSError) as e:
@@ -237,7 +237,7 @@ class BackupEngine:
             temp_dir.rename(device_folder)
         except OSError as e:
             self.logger.error(f"Failed to finalize migration to {device_name}: {e}")
-            # Try to roll back some files from temp_dir if possible, 
+            # Try to roll back some files from temp_dir if possible,
             # but usually this is a fatal collision or permission issue.
             return
 
@@ -264,7 +264,7 @@ class BackupEngine:
 
         return True
 
-    def _copy_files(self, files: List[FileInfo], backup_target: Path, action: FileAction) -> None:
+    def _copy_files(self, files: list[FileInfo], backup_target: Path, action: FileAction) -> None:
         """Copies files with multithreading."""
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
             futures = {
@@ -323,9 +323,8 @@ class BackupEngine:
 
     def _copy_single_file(
         self, file_info: FileInfo, backup_target: Path, action: FileAction
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """Copies a single file, handling type collisions."""
-        import shutil
         try:
             dest_path = backup_target / file_info.relative_path
 
@@ -349,7 +348,7 @@ class BackupEngine:
                 # Fallback: basic copy + manual mtime preservation if copy2 fails (common on ExFAT/FAT32)
                 self.logger.warning(f"Full metadata copy failed for {file_info.relative_path}: {e}. Falling back to basic copy.")
                 shutil.copy(file_info.path, dest_path)
-                
+
                 # Try to preserve at least the modification time
                 try:
                     import os
@@ -366,9 +365,8 @@ class BackupEngine:
         except Exception as e:
             return False, str(e)
 
-    def _delete_files(self, files: List[Path]) -> None:
+    def _delete_files(self, files: list[Path]) -> None:
         """Deletes files/directories that no longer exist in source."""
-        import shutil
         for path in files:
             if not path.exists():
                 continue
@@ -459,13 +457,13 @@ class DryRunBackupEngine(BackupEngine):
 
     def _copy_single_file(
         self, file_info: FileInfo, backup_target: Path, action: FileAction
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """Simulates copying without actual file operation."""
         # Short pause for simulation
         time.sleep(0.001)
         return True, "DRY-RUN"
 
-    def _delete_files(self, files: List[Path]) -> None:
+    def _delete_files(self, files: list[Path]) -> None:
         """Simulates deletion."""
         for path in files:
             self.result.deleted_files += 1

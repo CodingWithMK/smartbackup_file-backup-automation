@@ -2,14 +2,14 @@
 Manifest Base - Base classes for manifest tracking.
 """
 
+import hashlib
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional
-
-import hashlib
+from typing import Optional
 
 from smartbackup.models import FileInfo
 
@@ -69,7 +69,7 @@ class ManifestEntry:
         # Get permissions from file
         try:
             permissions = file_info.path.stat().st_mode
-        except (OSError, IOError):
+        except OSError:
             permissions = 0o644
 
         return cls(
@@ -118,7 +118,7 @@ class Manifest:
     hostname: str = ""  # Device hostname for identification
     hash_algorithm: str = "sha256"  # Hash algorithm used for file hashes
     backup_count: int = 0
-    entries: Dict[str, ManifestEntry] = field(default_factory=dict)
+    entries: dict[str, ManifestEntry] = field(default_factory=dict)
 
     @property
     def total_files(self) -> int:
@@ -200,10 +200,10 @@ class ManifestDiff:
     Used to determine what needs to be backed up.
     """
 
-    new_files: List[FileInfo] = field(default_factory=list)
-    modified_files: List[FileInfo] = field(default_factory=list)
-    deleted_paths: List[str] = field(default_factory=list)
-    unchanged_files: List[FileInfo] = field(default_factory=list)
+    new_files: list[FileInfo] = field(default_factory=list)
+    modified_files: list[FileInfo] = field(default_factory=list)
+    deleted_paths: list[str] = field(default_factory=list)
+    unchanged_files: list[FileInfo] = field(default_factory=list)
 
     @property
     def has_changes(self) -> bool:
@@ -211,7 +211,7 @@ class ManifestDiff:
         return bool(self.new_files or self.modified_files or self.deleted_paths)
 
     @property
-    def files_to_backup(self) -> List[FileInfo]:
+    def files_to_backup(self) -> list[FileInfo]:
         """Get all files that need to be backed up."""
         return self.new_files + self.modified_files
 
@@ -295,7 +295,7 @@ class ManifestManager(ABC):
         )
 
     def diff(
-        self, source_files: Dict[Path, FileInfo], manifest: Optional[Manifest] = None
+        self, source_files: dict[Path, FileInfo], manifest: Optional[Manifest] = None
     ) -> ManifestDiff:
         """
         Compare source files against manifest to find changes.
@@ -346,8 +346,8 @@ class ManifestManager(ABC):
     def update_from_backup(
         self,
         manifest: Manifest,
-        backed_up_files: List[FileInfo],
-        deleted_paths: Optional[List[str]] = None,
+        backed_up_files: list[FileInfo],
+        deleted_paths: Optional[list[str]] = None,
     ) -> Manifest:
         """
         Update manifest after a backup operation.
@@ -392,7 +392,7 @@ class ManifestManager(ABC):
 
     def verify(
         self, manifest: Manifest, backup_target: Path, verify_hashes: bool = False
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Verify backup files against manifest.
 

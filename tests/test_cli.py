@@ -7,9 +7,7 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
-from smartbackup.cli import main, _list_available_drives, __version__
+from smartbackup.cli import __version__, _list_available_drives, main
 
 
 class TestCLIVersion:

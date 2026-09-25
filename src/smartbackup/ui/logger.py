@@ -5,12 +5,10 @@ Modernised with Rich for styled terminal output, progress bars, panels,
 and tables while keeping the same public API.
 """
 
-import platform
-import sys
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from rich.console import Console
 from rich.panel import Panel
@@ -44,7 +42,7 @@ class BackupLogger:
         self.log_file = log_file
         self.verbose = verbose
         self.lock = threading.Lock()
-        self._log_buffer: List[str] = []
+        self._log_buffer: list[str] = []
         self._progress_line_active = False
         self.console = Console(highlight=False)
 

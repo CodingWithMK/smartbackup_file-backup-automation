@@ -6,7 +6,6 @@ import hashlib
 import os
 import re
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
 
 from smartbackup.models import FileInfo
 from smartbackup.ui.logger import BackupLogger
@@ -22,9 +21,9 @@ class ExclusionFilter:
     - Regex patterns (optional)
     """
 
-    def __init__(self, exclusions: Set[str], excluded_extensions: Set[str]):
-        self.exact_matches: Set[str] = set()
-        self.patterns: List[re.Pattern[str]] = []
+    def __init__(self, exclusions: set[str], excluded_extensions: set[str]):
+        self.exact_matches: set[str] = set()
+        self.patterns: list[re.Pattern[str]] = []
         self.excluded_extensions = {ext.lower() for ext in excluded_extensions}
 
         for excl in exclusions:
@@ -35,7 +34,7 @@ class ExclusionFilter:
             else:
                 self.exact_matches.add(excl.lower())
 
-    def should_exclude(self, path: Path) -> Tuple[bool, str]:
+    def should_exclude(self, path: Path) -> tuple[bool, str]:
         """
         Checks if a path should be excluded.
 
@@ -107,7 +106,7 @@ class FileScanner:
         self._scan_count = 0
         self._excluded_count = 0
 
-    def scan(self, base_path: Path) -> Dict[Path, FileInfo]:
+    def scan(self, base_path: Path) -> dict[Path, FileInfo]:
         """
         Scans a directory recursively.
 
@@ -121,7 +120,7 @@ class FileScanner:
         self._scan_count = 0
         self._excluded_count = 0
 
-        files: Dict[Path, FileInfo] = {}
+        files: dict[Path, FileInfo] = {}
 
         try:
             self._scan_recursive(base_path, base_path, files)
@@ -137,7 +136,7 @@ class FileScanner:
         return files
 
     def _scan_recursive(
-        self, current_path: Path, base_path: Path, files: Dict[Path, FileInfo]
+        self, current_path: Path, base_path: Path, files: dict[Path, FileInfo]
     ) -> None:
         """Recursive scan implementation."""
         try:

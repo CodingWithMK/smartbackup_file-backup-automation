@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Optional
 
 from rich.console import Console
 from rich.table import Table
@@ -42,7 +42,7 @@ class RestoreResult:
     restored_size: int = 0
     start_time: datetime = field(default_factory=datetime.now)
     end_time: Optional[datetime] = None
-    file_actions: List[Tuple[Path, FileAction, str]] = field(default_factory=list)
+    file_actions: list[tuple[Path, FileAction, str]] = field(default_factory=list)
 
     @property
     def duration(self) -> float:
@@ -112,7 +112,7 @@ class RestoreEngine:
 
     def restore(
         self,
-        patterns: Optional[List[str]] = None,
+        patterns: Optional[list[str]] = None,
         overwrite: bool = False,
         dry_run: bool = False,
         max_workers: int = 4,
@@ -181,7 +181,7 @@ class RestoreEngine:
 
         return self.result
 
-    def _collect_files(self, patterns: Optional[List[str]] = None) -> List[Path]:
+    def _collect_files(self, patterns: Optional[list[str]] = None) -> list[Path]:
         """
         Collect files to restore based on patterns.
 
@@ -218,7 +218,7 @@ class RestoreEngine:
 
     def _restore_files(
         self,
-        files: List[Path],
+        files: list[Path],
         conflict_resolution: ConflictResolution,
         dry_run: bool,
         max_workers: int,
@@ -262,7 +262,7 @@ class RestoreEngine:
         source_path: Path,
         conflict_resolution: ConflictResolution,
         dry_run: bool,
-    ) -> Tuple[bool, FileAction, str]:
+    ) -> tuple[bool, FileAction, str]:
         """
         Restore a single file.
 
@@ -353,7 +353,7 @@ class RestoreEngine:
         else:
             self.logger.warning(f"Restore completed with {self.result.errors} errors")
 
-    def list_files(self, patterns: Optional[List[str]] = None) -> List[Tuple[Path, int]]:
+    def list_files(self, patterns: Optional[list[str]] = None) -> list[tuple[Path, int]]:
         """
         List files available in backup.
 

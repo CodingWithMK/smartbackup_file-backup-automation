@@ -9,7 +9,6 @@ import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import List
 
 from smartbackup.ui.logger import BackupLogger
 
@@ -168,7 +167,7 @@ class BackupCompressor:
         return False
 
     @staticmethod
-    def find_archives(backup_root: Path, device_name: str) -> List[Path]:
+    def find_archives(backup_root: Path, device_name: str) -> list[Path]:
         """Find all archive files for a given device.
 
         Args:
@@ -178,7 +177,7 @@ class BackupCompressor:
         Returns:
             List of archive file paths, sorted by name.
         """
-        archives: List[Path] = []
+        archives: list[Path] = []
         if not backup_root.exists():
             return archives
 

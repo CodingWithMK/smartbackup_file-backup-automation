@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Optional
 
 
 class FileAction(Enum):
@@ -54,7 +54,7 @@ class BackupResult:
     copied_size: int = 0
     start_time: datetime = field(default_factory=datetime.now)
     end_time: Optional[datetime] = None
-    file_actions: List[Tuple[Path, FileAction, str]] = field(default_factory=list)
+    file_actions: list[tuple[Path, FileAction, str]] = field(default_factory=list)
 
     @property
     def duration(self) -> float:

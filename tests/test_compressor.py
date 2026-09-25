@@ -9,11 +9,10 @@ from unittest.mock import patch
 
 import pytest
 
-from smartbackup.core.compressor import SUPPORTED_FORMATS, BackupCompressor
 from smartbackup.config import BackupConfig
+from smartbackup.core.compressor import SUPPORTED_FORMATS, BackupCompressor
 from smartbackup.core.engine import BackupEngine
 from smartbackup.ui.logger import BackupLogger
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -576,7 +575,6 @@ class TestCompressCLI:
                     command_names.append(cmd.name)
 
         # Also check the click group directly
-        import click
 
         try:
             click_app = typer.main.get_command(app)

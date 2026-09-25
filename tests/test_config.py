@@ -5,13 +5,11 @@ Tests for the config module.
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from smartbackup.config import (
-    BackupConfig,
-    ConfigManager,
     DEFAULT_EXCLUSIONS,
     EXCLUDED_EXTENSIONS,
+    BackupConfig,
+    ConfigManager,
 )
 
 

@@ -4,8 +4,6 @@ Tests for the platform resolver module.
 
 from pathlib import Path
 
-import pytest
-
 from smartbackup.platform.resolver import PathResolver
 
 
@@ -26,7 +24,7 @@ class TestPathResolver:
         """Documents path should typically contain 'Documents'."""
         docs = PathResolver.get_documents_path()
         # On most systems, the path should contain 'Documents' or localized equivalent
-        path_str = str(docs).lower()
+        str(docs).lower()
         # This may fail on some Linux systems with non-standard configs
         # so we just check it's a valid path
         assert len(str(docs)) > 0
@@ -52,7 +50,7 @@ class TestPathResolver:
         """Free space should be positive for all drives."""
         drives = PathResolver.find_external_drives()
 
-        for path, label, free in drives:
+        for _path, _label, free in drives:
             assert free >= 0
 
 

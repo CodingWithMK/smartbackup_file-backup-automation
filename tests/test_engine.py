@@ -5,8 +5,6 @@ Tests for the engine module.
 import json
 from pathlib import Path
 
-import pytest
-
 from smartbackup.config import BackupConfig
 from smartbackup.core.engine import BackupEngine, DryRunBackupEngine
 from smartbackup.models import FileAction, FileInfo
@@ -104,7 +102,7 @@ class TestBackupEngine:
         logger = BackupLogger(verbose=False)
         engine = BackupEngine(config, logger)
 
-        result = engine.run_backup()
+        engine.run_backup()
 
         assert (backup_dir / "TestBackup").exists()
 

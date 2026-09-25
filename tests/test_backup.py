@@ -7,22 +7,20 @@ Run with: pytest
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from smartbackup import (
-    SmartBackup,
     BackupConfig,
-    BackupResult,
-    PathResolver,
-    BackupLogger,
-    __version__,
-    FileScanner,
-    ExclusionFilter,
-    ChangeDetector,
     BackupEngine,
-    DeviceDetector,
+    BackupLogger,
+    BackupResult,
+    ChangeDetector,
     ConfigManager,
+    DeviceDetector,
+    ExclusionFilter,
     FallbackHandler,
+    FileScanner,
+    PathResolver,
+    SmartBackup,
+    __version__,
 )
 
 

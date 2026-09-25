@@ -37,10 +37,10 @@ class JsonManifestManager(ManifestManager):
             return None
 
         try:
-            with open(self.manifest_path, "r", encoding="utf-8") as f:
+            with open(self.manifest_path, encoding="utf-8") as f:
                 data = json.load(f)
             return Manifest.from_dict(data)
-        except (json.JSONDecodeError, IOError, OSError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             # Log error but don't crash - treat as no manifest
             # This allows recovery from corrupted manifests
             import sys
@@ -75,7 +75,7 @@ class JsonManifestManager(ManifestManager):
             temp_path.replace(self.manifest_path)
             return True
 
-        except (IOError, OSError) as e:
+        except OSError as e:
             # Clean up temp file on failure
             try:
                 temp_path.unlink(missing_ok=True)

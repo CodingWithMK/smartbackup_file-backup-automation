@@ -23,10 +23,10 @@ __license__ = "MIT"
 # Import from new modular structure
 from smartbackup.backup import SmartBackup
 from smartbackup.cli import main
-from smartbackup.config import BackupConfig, ConfigManager, DEFAULT_EXCLUSIONS, EXCLUDED_EXTENSIONS
+from smartbackup.config import DEFAULT_EXCLUSIONS, EXCLUDED_EXTENSIONS, BackupConfig, ConfigManager
+from smartbackup.core.compressor import BackupCompressor
 from smartbackup.core.detector import ChangeDetector
 from smartbackup.core.engine import BackupEngine, DryRunBackupEngine
-from smartbackup.core.compressor import BackupCompressor
 from smartbackup.core.restore import ConflictResolution, RestoreEngine, RestoreResult
 from smartbackup.core.scanner import ExclusionFilter, FileScanner
 from smartbackup.handlers import FallbackHandler

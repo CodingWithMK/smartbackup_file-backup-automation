@@ -5,8 +5,6 @@ Tests for the logger module.
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from smartbackup.models import BackupResult, FileAction
 from smartbackup.ui.colors import Colors
 from smartbackup.ui.logger import BackupLogger

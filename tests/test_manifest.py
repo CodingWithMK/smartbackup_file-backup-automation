@@ -1,12 +1,7 @@
 """Tests for the manifest system."""
 
 import hashlib
-import json
-import tempfile
-from datetime import datetime
 from pathlib import Path
-
-import pytest
 
 from smartbackup.manifest.base import (
     Manifest,

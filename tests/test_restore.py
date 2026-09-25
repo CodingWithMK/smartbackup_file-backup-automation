@@ -1,6 +1,5 @@
 """Tests for the restore engine."""
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -11,7 +10,6 @@ from smartbackup.core.restore import (
     RestoreResult,
 )
 from smartbackup.manifest.json_manifest import JsonManifestManager
-from smartbackup.models import FileAction
 
 
 class TestRestoreResult:

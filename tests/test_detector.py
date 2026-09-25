@@ -4,8 +4,6 @@ Tests for the detector module.
 
 from pathlib import Path
 
-import pytest
-
 from smartbackup.core.detector import ChangeDetector
 from smartbackup.models import FileInfo
 from smartbackup.ui.logger import BackupLogger
