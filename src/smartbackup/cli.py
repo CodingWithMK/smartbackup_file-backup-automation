@@ -291,7 +291,7 @@ def _handle_restore(
     except ImportError:
         logger.error("Restore functionality not yet available")
         logger.info("This feature will be implemented in the next version")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
 
     if list_files:
         # List files in backup
@@ -344,7 +344,7 @@ def _handle_restore(
         import traceback
 
         traceback.print_exc()
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 # ---------------------------------------------------------------------------
@@ -447,7 +447,7 @@ def _handle_compress(
         compressor.compress(device_target, archive_path, fmt)
     except Exception as e:
         logger.error(f"Compression failed: {e}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     # Optionally remove the source directory
     if remove_source:
@@ -458,7 +458,7 @@ def _handle_compress(
         except Exception as e:
             logger.error(f"Failed to remove source directory: {e}")
             logger.warning("Archive was created successfully, but source was not removed")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from e
 
     raise typer.Exit(code=0)
 
@@ -502,7 +502,7 @@ def _handle_watch(interval: float = 2.5, cooldown: int = 300) -> None:
     except KeyboardInterrupt:
         watcher.stop()
         console.print("\n[yellow]Watcher stopped by user.[/yellow]")
-        raise typer.Exit(code=0)
+        raise typer.Exit(code=0) from None
 
 
 @daemon_app.command("install", help="Install and start the background watcher service")
@@ -752,7 +752,7 @@ def backup_cmd(
             ).strip().lower()
         except (KeyboardInterrupt, EOFError):
             console.print("\n[yellow]Backup cancelled by user.[/yellow]")
-            raise typer.Exit(code=0)
+            raise typer.Exit(code=0) from None
 
         if choice in ("n", "no"):
             console.print("[dim]Backup skipped by user.[/dim]")
@@ -838,11 +838,11 @@ def backup_cmd(
         logger.error(f"Storage medium error (drive may have been disconnected): {e}")
         if prompt:
             time.sleep(3)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Backup cancelled by user.[/yellow]")
-        raise typer.Exit(code=130)
+        raise typer.Exit(code=130) from None
 
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
@@ -851,7 +851,7 @@ def backup_cmd(
         traceback.print_exc()
         if prompt:
             time.sleep(5)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 # ---------------------------------------------------------------------------
