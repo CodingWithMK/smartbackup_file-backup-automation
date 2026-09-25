@@ -23,6 +23,7 @@ noted). Locations are `file:line` as of v0.6.0. Companion document:
 | F8 | `DeviceDetector.validate_device()` unused — duplicates the engine's write test | 🟡 Low | Duplication | 3 | ⬜ pending |
 | F9 | `DebounceLock.clear()` unreachable — users must hand-delete `watcher_state.json` | 🟡 Low | Missing wiring | 3 | ⬜ pending |
 | F10 | `ManifestFormat.SQLITE`, `FallbackHandler.notify_completion()` desktop notifications | ⚪ Backlog | Roadmap | 4 | ⬜ pending |
+| F11 | Failed path validation still reports success: a missing target dir makes `run_backup()` return early with `errors = 0`, so the CLI exits 0 and prints "Backup completed successfully!" while copying nothing | 🟠 Medium | Bug (discovered while writing Phase 0 tests) | 1 | ⬜ pending |
 
 ---
 
@@ -36,6 +37,15 @@ noted). Locations are `file:line` as of v0.6.0. Companion document:
 > all three §9 baselines verified passing.
 
 ### F1 — Dry-run must not mutate the manifest 🔴 ✅ fixed
+
+> **Side finding (F11, NOT fixed in Phase 0):** `_validate_paths()` failing (missing target
+> directory, missing source, no write permission) makes `run_backup()` return a fresh
+> `BackupResult` whose `errors` is still `0` (`core/engine.py:52-60`). `SmartBackup.run()`
+> therefore returns `True`, the CLI exits 0, and the summary prints
+> "Backup completed successfully!" even though nothing was copied. Reproduced while writing
+> the sandbox smoke tests: `--target <path-that-does-not-exist>` yields exit code 0.
+> Suggested fix: set `errors = 1` (or a `success = False` flag) on the validation-failure
+> path. Tracked as F11 below; scheduled for Phase 1.
 
 **Where:** `core/engine.py:435-453` (`DryRunBackupEngine`) inherits `run_backup()`
 (`core/engine.py:48-175`), whose step 9 (`:139-148`) updates and **saves** the manifest.

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.1] - 2026-09-25
 
+### Added
+- **Layered test suites for the Phase-0 fixes**:
+  - `tests/test_dry_run_isolation.py` — unit mutation-gate spies (manifest save, layout
+    migration, compression) with real-run counterparts, plus public-API state-parity tests
+    proving dry-runs are invisible in the final backup tree and manifest.
+  - `tests/test_exclusion_wiring_e2e.py` — the real Typer command with the real engine:
+    persist-apply-later behavior and a control test proving `*.iso` is only excluded by a
+    pattern, not by the built-in sets.
+  - `tests/test_sandbox_smoke.py` — black-box subprocess smoke tests running `main.py` in a
+    fully isolated sandbox (redirected config dir), registered under the new
+    `sandbox` pytest marker.
+
 ### Fixed
 - **Dry-run no longer mutates backup state (F1)**: `--dry-run` previously updated and saved
   `.smartbackup_manifest.json` as if the simulated copies had happened, so a later real run
