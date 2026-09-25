@@ -31,6 +31,10 @@ class BackupEngine:
     - Manifest-based incremental backups
     """
 
+    # When True, the engine must not persist any state (manifest save, legacy
+    # layout migration, archive creation). Overridden by DryRunBackupEngine.
+    is_dry_run = False
+
     def __init__(self, config: BackupConfig, logger: BackupLogger):
         self.config = config
         self.logger = logger
@@ -71,8 +75,10 @@ class BackupEngine:
             # 3. Create backup directory (with per-device subfolder)
             backup_root = self.config.backup_path / self.config.backup_folder_name
             if self.config.device_name:
-                # Migrate legacy layout if needed
-                self._migrate_legacy_layout(backup_root)
+                # Migrate legacy layout if needed. Never during dry-run: a
+                # simulation must not reorganize files on the backup medium.
+                if not self.is_dry_run:
+                    self._migrate_legacy_layout(backup_root)
                 backup_target = backup_root / self.config.device_name
             else:
                 backup_target = backup_root
@@ -135,8 +141,13 @@ class BackupEngine:
             # Count skipped
             self.result.skipped_files = len(source_files) - len(new_files) - len(modified_files)
 
-            # 9. Update manifest with backed up files
-            if self.config.use_manifest and self._manifest_manager and self._manifest:
+            # 9. Update manifest with backed up files. Skipped during dry-run:
+            #    simulated copies/deletes must never advance manifest state,
+            #    otherwise a later real run would wrongly skip those files.
+            if self.is_dry_run:
+                if self.config.use_manifest:
+                    self.logger.info("Dry-run: manifest left unchanged")
+            elif self.config.use_manifest and self._manifest_manager and self._manifest:
                 self._manifest = self._manifest_manager.update_from_backup(
                     self._manifest, self._backed_up_files, deleted_paths=deleted_paths
                 )
@@ -149,17 +160,22 @@ class BackupEngine:
 
             # 10. Compress backup if requested
             if self.config.compress_format:
-                from smartbackup.core.compressor import BackupCompressor
+                if self.is_dry_run:
+                    self.logger.info(
+                        f"Dry-run: skipping {self.config.compress_format} archive creation"
+                    )
+                else:
+                    from smartbackup.core.compressor import BackupCompressor
 
-                compressor = BackupCompressor(self.logger)
-                archive_name = compressor.get_archive_name(
-                    self.config.device_name or "backup",
-                    self.config.compress_format,
-                )
-                archive_path = backup_root / archive_name
-                compressor.compress(
-                    backup_target, archive_path, self.config.compress_format
-                )
+                    compressor = BackupCompressor(self.logger)
+                    archive_name = compressor.get_archive_name(
+                        self.config.device_name or "backup",
+                        self.config.compress_format,
+                    )
+                    archive_path = backup_root / archive_name
+                    compressor.compress(
+                        backup_target, archive_path, self.config.compress_format
+                    )
 
         except Exception as e:
             self.logger.error(f"Backup error: {e}")
@@ -435,8 +451,11 @@ SUMMARY:
 class DryRunBackupEngine(BackupEngine):
     """
     Backup engine for simulation mode.
-    Performs all analyses but does not copy files.
+    Performs all analyses but does not copy files or persist any state
+    (no manifest writes, no layout migration, no archives).
     """
+
+    is_dry_run = True
 
     def _copy_single_file(
         self, file_info: FileInfo, backup_target: Path, action: FileAction

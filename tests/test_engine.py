@@ -2,6 +2,7 @@
 Tests for the engine module.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -209,3 +210,113 @@ class TestDryRunBackupEngine:
         # File should still exist
         assert test_file.exists()
         assert engine.result.deleted_files == 1
+
+    def _make_config(self, source_dir: Path, backup_dir: Path, **kwargs) -> BackupConfig:
+        """Build a BackupConfig with test-friendly defaults."""
+        return BackupConfig(
+            source_path=source_dir,
+            backup_path=backup_dir,
+            backup_folder_name="TestBackup",
+            log_to_file=False,
+            **kwargs,
+        )
+
+    def test_dry_run_does_not_create_manifest_on_fresh_target(
+        self, source_dir: Path, backup_dir: Path
+    ):
+        """A dry-run on a fresh target must not write a manifest (Phase 0 / F1)."""
+        config = self._make_config(source_dir, backup_dir)
+        logger = BackupLogger(verbose=False)
+
+        result = DryRunBackupEngine(config, logger).run_backup()
+
+        manifest_path = backup_dir / "TestBackup" / ".smartbackup_manifest.json"
+        assert not manifest_path.exists()
+        assert result.copied_files > 0  # simulation still reports what would happen
+
+        # A subsequent real backup must copy everything (previously: all skipped)
+        real_result = BackupEngine(config, logger).run_backup()
+        assert real_result.copied_files > 0
+        assert (backup_dir / "TestBackup" / "file1.txt").exists()
+
+    def test_dry_run_does_not_update_manifest_then_real_run_copies_changes(
+        self, source_dir: Path, backup_dir: Path
+    ):
+        """Dry-run must not advance manifest state for pending changes (Phase 0 / F1)."""
+        config = self._make_config(source_dir, backup_dir)
+        logger = BackupLogger(verbose=False)
+        manifest_path = backup_dir / "TestBackup" / ".smartbackup_manifest.json"
+
+        # Baseline real backup
+        BackupEngine(config, logger).run_backup()
+        before = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert "file1.txt" in before["files"]
+
+        # Change a source file, then dry-run
+        (source_dir / "file1.txt").write_text("CHANGED CONTENT")
+        DryRunBackupEngine(config, logger).run_backup()
+
+        after = json.loads(manifest_path.read_text(encoding="utf-8"))
+        # Manifest must be untouched: same entry, same backup count
+        assert after["files"]["file1.txt"]["size"] == before["files"]["file1.txt"]["size"]
+        assert after["files"]["file1.txt"]["mtime"] == before["files"]["file1.txt"]["mtime"]
+        assert after["backup_count"] == before["backup_count"]
+
+        # Real run afterwards must pick up and copy the change
+        result = BackupEngine(config, logger).run_backup()
+        assert result.updated_files == 1
+        assert (backup_dir / "TestBackup" / "file1.txt").read_text() == "CHANGED CONTENT"
+
+    def test_dry_run_keeps_entries_for_deleted_source_files(
+        self, source_dir: Path, backup_dir: Path
+    ):
+        """Source deletions must not be propagated to the manifest by a dry-run."""
+        config = self._make_config(source_dir, backup_dir)
+        logger = BackupLogger(verbose=False)
+        manifest_path = backup_dir / "TestBackup" / ".smartbackup_manifest.json"
+
+        BackupEngine(config, logger).run_backup()
+        (source_dir / "file2.py").unlink()
+
+        DryRunBackupEngine(config, logger).run_backup()
+
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert "file2.py" in manifest["files"]  # still tracked after dry-run
+        assert (backup_dir / "TestBackup" / "file2.py").exists()
+
+        # A real run performs the deletion as usual
+        BackupEngine(config, logger).run_backup()
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert "file2.py" not in manifest["files"]
+        assert not (backup_dir / "TestBackup" / "file2.py").exists()
+
+    def test_dry_run_does_not_create_archive_with_compress(
+        self, source_dir: Path, backup_dir: Path
+    ):
+        """Dry-run + compress_format must not write an archive (Phase 0 / F1)."""
+        config = self._make_config(source_dir, backup_dir, compress_format="zip")
+        logger = BackupLogger(verbose=False)
+
+        DryRunBackupEngine(config, logger).run_backup()
+
+        assert not list(backup_dir.rglob("*.zip"))
+
+    def test_dry_run_does_not_migrate_legacy_layout(
+        self, source_dir: Path, backup_dir: Path
+    ):
+        """Dry-run must not move a legacy flat layout into a device folder."""
+        legacy_root = backup_dir / "TestBackup"
+        legacy_root.mkdir()
+        (legacy_root / "old.txt").write_text("legacy content")
+        (legacy_root / ".smartbackup_manifest.json").write_text(
+            json.dumps({"version": 1, "format": "json"}), encoding="utf-8"
+        )
+
+        config = self._make_config(source_dir, backup_dir, device_name="TestDev")
+        logger = BackupLogger(verbose=False)
+
+        DryRunBackupEngine(config, logger).run_backup()
+
+        # Legacy files stay exactly where they were
+        assert (legacy_root / "old.txt").exists()
+        assert not (legacy_root / "TestDev" / "old.txt").exists()
