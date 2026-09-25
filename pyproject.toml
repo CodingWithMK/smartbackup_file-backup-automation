@@ -71,6 +71,7 @@ pythonpath = ["src"]  # Important: Add src to Python path for tests
 addopts = ["-v", "--tb=short"]
 markers = [
     "slow: marks tests as slow",
+    "sandbox: black-box CLI smoke tests spawned as a subprocess in an isolated sandbox",
 ]
 
 [tool.ruff]
