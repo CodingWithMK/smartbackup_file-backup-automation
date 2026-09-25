@@ -167,6 +167,19 @@ class TestConfigManager:
         assert "node_modules" in exclusions
         assert "__pycache__" in exclusions
 
+    def test_get_exclusions_merges_custom_patterns(self):
+        """get_exclusions should union persisted custom patterns with the defaults."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = ConfigManager()
+            manager.config_dir = Path(tmpdir)
+            manager.config_file = Path(tmpdir) / "config.json"
+
+            manager.add_exclusion("LargeDatasets")
+
+            exclusions = manager.get_exclusions()
+            assert "LargeDatasets" in exclusions  # custom pattern merged in
+            assert "node_modules" in exclusions  # defaults preserved
+
     def test_set_and_get_preferred_target(self):
         """Preferred target should be saveable and loadable."""
         with tempfile.TemporaryDirectory() as tmpdir:
