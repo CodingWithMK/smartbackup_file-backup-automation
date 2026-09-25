@@ -39,8 +39,9 @@ _backup_logs/
 .smartbackup/
 .local_backup_temp/
 
-# OpenCode
-.opencode/
+# OpenCode (skills stay tracked so the team shares the workflows)
+.opencode/*
+!.opencode/skills/
 
 # UV
 .uv/
