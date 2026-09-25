@@ -792,6 +792,12 @@ def backup_cmd(
             config_manager.add_exclusion(pat)
             logger.info(f"Exclusion added: {pat}")
 
+    # Effective exclusion set for this run: built-in defaults + persisted
+    # custom patterns (get_exclusions() re-reads config, so patterns added
+    # above are included immediately)
+    merged_exclusions = config_manager.get_exclusions()
+    logger.info(f"Exclusion patterns in effect: {len(merged_exclusions)}")
+
     # Get preferred target
     target_label = label or config_manager.get_preferred_target()
 
@@ -816,6 +822,7 @@ def backup_cmd(
             use_hash=use_hash or hash_all,
             hash_all=hash_all,
             dry_run=dry_run,
+            exclusions=merged_exclusions,
         )
 
         if prompt:

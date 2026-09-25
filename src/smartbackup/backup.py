@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from smartbackup.config import BackupConfig
+from smartbackup.config import DEFAULT_EXCLUSIONS, BackupConfig
 from smartbackup.core.engine import BackupEngine, DryRunBackupEngine
 from smartbackup.handlers import FallbackHandler
 from smartbackup.platform.devices import DeviceDetector
@@ -38,6 +38,7 @@ class SmartBackup:
         use_hash: bool = False,
         hash_all: bool = False,
         dry_run: bool = False,
+        exclusions: Optional[set[str]] = None,
     ) -> bool:
         """
         Executes the backup.
@@ -52,6 +53,9 @@ class SmartBackup:
             use_hash: Enable SHA-256 hashing for change detection
             hash_all: Hash all files regardless of size (implies use_hash)
             dry_run: Simulate backup without copying files
+            exclusions: Complete exclusion set for the scan (built-in defaults
+                plus persisted custom patterns, e.g. ConfigManager.get_exclusions()).
+                None falls back to the built-in DEFAULT_EXCLUSIONS.
 
         Returns:
             True if successful, False on errors
@@ -100,6 +104,7 @@ class SmartBackup:
             backup_path=backup_path,
             backup_folder_name="Documents-Backup",
             device_name=resolved_device_name,
+            exclusions=exclusions if exclusions is not None else DEFAULT_EXCLUSIONS.copy(),
             max_workers=min(8, (os.cpu_count() or 4)),
             use_hash_verification=use_hash or hash_all,
             hash_all_files=hash_all,

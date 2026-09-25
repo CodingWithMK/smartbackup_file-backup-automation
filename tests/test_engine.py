@@ -164,6 +164,28 @@ class TestBackupEngine:
         assert result2.copied_files == 0
         assert result2.skipped_files == copied_first
 
+    def test_custom_exclusions_applied_in_run_backup(
+        self, source_dir: Path, backup_dir: Path
+    ):
+        """Custom exclusion patterns must reach the scan (Phase 0 / F2)."""
+        from smartbackup.config import DEFAULT_EXCLUSIONS
+
+        (source_dir / "image.iso").write_bytes(b"iso-image")
+
+        config = BackupConfig(
+            source_path=source_dir,
+            backup_path=backup_dir,
+            backup_folder_name="TestBackup",
+            log_to_file=False,
+            exclusions=DEFAULT_EXCLUSIONS | {"*.iso"},
+        )
+        logger = BackupLogger(verbose=False)
+
+        BackupEngine(config, logger).run_backup()
+
+        assert not (backup_dir / "TestBackup" / "image.iso").exists()
+        assert (backup_dir / "TestBackup" / "file1.txt").exists()
+
 
 class TestDryRunBackupEngine:
     """Tests for DryRunBackupEngine class."""
