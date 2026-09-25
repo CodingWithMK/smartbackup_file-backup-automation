@@ -106,7 +106,7 @@ smartbackup --help        # all commands and options
 smartbackup                                   # backup Documents to the auto-detected drive
 smartbackup --source ~/Projects               # back up a custom folder
 smartbackup --target /media/USB_DRIVE         # back up to an explicit path
-smartbackup --dry-run                         # simulate a backup (see guide for caveats)
+smartbackup --dry-run                         # simulate a backup (no copies, no manifest writes)
 smartbackup --list-drives                     # show available drives
 smartbackup --hash                            # SHA-256 change detection (files ≤ 50 MB)
 smartbackup --target /media/USB --verify      # verify backup integrity against the manifest

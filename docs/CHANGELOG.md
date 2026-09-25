@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Dry-run no longer mutates backup state (F1)**: `--dry-run` previously updated and saved
+  `.smartbackup_manifest.json` as if the simulated copies had happened, so a later real run
+  reported `Skipped` and silently left the backup stale (or copied nothing at all on a fresh
+  target). The dry-run engine now skips manifest persistence, legacy folder-layout migration,
+  and archive creation when `--compress` is combined with `--dry-run`. Regression tests cover
+  the fresh-target, modified-file, deleted-file, compress, and legacy-layout scenarios.
+- **`--exclude` patterns now apply to the backup (F2)**: custom exclusion patterns were
+  persisted to `config.json` but never merged into the scan — `ConfigManager.get_exclusions()`
+  had no production caller. The CLI now passes the merged exclusion set (built-in defaults +
+  persisted custom patterns) into `SmartBackup.run()`, so an `--exclude` pattern takes effect
+  on the very run that adds it and on every subsequent run without repeating the flag.
+
+### Changed
+- **Behavior change — dry-run accounting**: dry-runs no longer increment `backup_count`,
+  advance manifest entries, remove deleted entries, migrate legacy layouts, or write
+  compression archives. They still create the run log so you keep a preview report.
+- **Behavior change — persisted exclusions take effect**: `exclusions` entries previously
+  saved in `config.json` (which were inert) are now applied to every backup run. If a config
+  contains patterns you added experimentally, review them before upgrading — files matched by
+  those patterns will now be excluded.
+
 ## [0.6.0] - 2026-08-22
 
 ### Added

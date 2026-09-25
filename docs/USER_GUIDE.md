@@ -166,23 +166,11 @@ The manifest records, per file: `hash` (SHA-256, optional), `size`, `mtime`,
   (a rebuilt manifest treats every file as new, so the next run re-copies everything — safe,
   just slower).
 
-> ### Known issue: dry-run writes the manifest
->
-> Dry-run mode copies/deletes **no files**, but it currently still **creates the backup
-> folder and saves/upates the manifest** as if the simulated copies had happened.
-> Verified behavior:
->
-> - Dry-run against a **fresh target** → manifest claims files exist; a later real run
->   reports `Skipped` and copies **nothing**.
-> - Dry-run against an **existing backup with pending changes** → the manifest is advanced
->   to the new state; the later real run skips those changes and the backup silently stays
->   **stale**.
->
-> **Workarounds (until fixed — see [`docs/PLAN_WIRING_FIXES.md`](PLAN_WIRING_FIXES.md)):**
-> 1. Do not run `--dry-run` immediately before a real backup that has changes to copy, **or**
-> 2. After a dry-run, delete `.smartbackup_manifest.json` from the device folder, then run a
->    real backup (it will re-copy and rebuild a correct manifest), **or**
-> 3. Run the real backup with `--no-manifest` once to force a full source-vs-backup sync.
+**Dry-run is read-only with respect to backup state.** `--dry-run` simulates the scan and
+diff, prints what *would* happen, and writes the run log — but it never creates or updates
+`.smartbackup_manifest.json`, never migrates a legacy folder layout, and never creates a
+compression archive. You can safely run a dry-run immediately before a real backup: the
+real run still sees every pending change and copies it.
 
 ### 3.2 Automatic External Drive Detection
 
@@ -313,9 +301,9 @@ Every command supports `--help` (`smartbackup restore --help`, …).
 | `--target` | `-t` | PATH | auto-detect external drive | Target directory/drive |
 | `--label` | `-l` | TEXT | — | Preferred target drive label (matched case-insensitively at detection time) |
 | `--prompt` | | | off | Run the interactive `[Y/n/d]` prompt for a detected drive (used by the auto-detect spawner) |
-| `--dry-run` | | | off | Simulate the backup. ⚠️ See the manifest warning in [§3.1](#known-issue-dry-run-writes-the-manifest) |
+| `--dry-run` | | | off | Simulate the backup: reports what would change without copying, deleting, or writing state (see [§3.1](#31-incremental-manifest-tracking)) |
 | `--quiet` | `-q` | | off | Minimal output (banner + summary still shown; per-file logging suppressed) |
-| `--exclude` | | TEXT (repeatable) | — | Add exclusion pattern(s). **Persists to `config.json`** — see [§7.3](#73-adding-custom-exclusions) |
+| `--exclude` | | TEXT (repeatable) | — | Add exclusion pattern(s). **Persists to `config.json` and applies to this run** — see [§7.3](#73-adding-custom-exclusions) |
 | `--list-drives` | | | — | List available external drives and exit |
 | `--device-name` | | TEXT | auto-detected hostname | Device name for the backup subfolder |
 | `--list-devices` | | | — | List devices with backups on the target drive and exit (requires `--target`) |
@@ -347,8 +335,7 @@ smartbackup --quiet                           # minimal output (scripts/CI)
 **Preview before you run**
 
 ```bash
-smartbackup --dry-run                         # simulate a backup
-                                             # ⚠️ see the manifest warning in §3.1
+smartbackup --dry-run                         # simulate a backup: no copies, no manifest writes
 smartbackup --list-drives                     # what drives are visible?
 smartbackup --target /media/USB --list-devices      # which machines have backups here?
 smartbackup --target /media/USB --show-manifest     # manifest header stats
@@ -508,7 +495,7 @@ Start backup now? (Y/n/d) [y]:
 |---|---|---|
 | **Yes** | `y`, `yes`, *(Enter)* | Normal backup runs |
 | **No** | `n`, `no` | "Backup skipped by user." — exits `0` |
-| **Dry-run** | `d`, `dry-run`, `dryrun` | Runs in dry-run simulation mode (⚠️ see manifest warning in §3.1) |
+| **Dry-run** | `d`, `dry-run`, `dryrun` | Runs in dry-run simulation mode (no files copied, manifest untouched) |
 | Anything else | — | Warning printed, proceeds with a **standard backup** |
 | Ctrl+C | — | "Backup cancelled by user." — exits `0` |
 
@@ -768,7 +755,7 @@ The file is created on first write. The config directory also holds `watcher_sta
 
 | Key | Type | Default | Effect | Settable from CLI? |
 |---|---|---|---|---|
-| `exclusions` | list of strings | `[]` (merged with built-ins) | Custom exclusion patterns | ⚠️ `--exclude` appends here (see below) |
+| `exclusions` | list of strings | `[]` (merged with built-ins) | Custom exclusion patterns | ✅ `--exclude` appends here and applies (see below) |
 | `preferred_target` | string | none | Drive label used to pick the target and to match watcher prompts (case-insensitive) | ❌ edit JSON manually |
 | `device_name` | string | none (use hostname) | Overrides the auto-detected device name (used by the watcher matcher) | ❌ edit JSON manually (`--device-name` is per-run only) |
 | `auto_watch_cooldown` | int (seconds) | `300` | Watcher debounce cooldown | ❌ edit JSON manually (`watch --cooldown` is per-run only) |
@@ -802,19 +789,15 @@ smartbackup --exclude "*.iso" "Downloads" "LargeDatasets"
 Each `--exclude` value is **persisted permanently** to `config.json` (they accumulate across
 runs — the flag does not create a one-shot exclusion).
 
-> ### Known limitation: persisted exclusions are not applied
+> ### Note: persisted exclusions are applied
 >
-> `--exclude` correctly saves patterns to `config.json`, but the backup engine is currently
-> constructed with the **built-in default exclusion set only** — custom patterns stored in
-> the config are **not merged into the scan**. Verified from source: `ConfigManager.get_exclusions()`
-> is never called by the backup pipeline.
+> `--exclude` saves the pattern to `config.json` **and** applies it immediately: the backup
+> run receives the merged set (`ConfigManager.get_exclusions()` = built-in defaults +
+> your custom patterns). Patterns saved by earlier runs are picked up automatically by
+> later runs, even without repeating the flag.
 >
-> **What actually excludes files today:** `DEFAULT_EXCLUSIONS` + `EXCLUDED_EXTENSIONS` +
-> venv-structure detection ([Appendix B](#b-default-exclusions)).
->
-> This is scheduled for fixing in [`docs/PLAN_WIRING_FIXES.md`](PLAN_WIRING_FIXES.md).
-> Until then, treat `config.json`'s `exclusions` list as stored-but-inert, and don't rely on
-> `--exclude` for correctness-critical filtering.
+> **What excludes files:** `DEFAULT_EXCLUSIONS` + `EXCLUDED_EXTENSIONS` + your persisted
+> patterns + venv-structure detection ([Appendix B](#b-default-exclusions)).
 
 **By editing the file:** add patterns to the `exclusions` array in `config.json` (same
 syntax: exact names like `Downloads`, globs like `*.iso`). Matching rules: see §3.5.
@@ -929,8 +912,8 @@ owned by root — `chown`/`mount` it read-write or pick another target.
 | Watcher runs but **never prompts** | Drive doesn't match §5.1 (brand-new drive), or cooldown active, or headless | Seed the drive once manually; delete `watcher_state.json`; check `daemon status` |
 | Prompt appears but backups to nothing | — | Check the panel's Device ID matches the folder you expect (`--device-name`) |
 | Second backup re-copies *everything* | Manifest missing/corrupt (warning was printed) or `--no-manifest` used | Normal recovery — manifest rebuilds; investigate the drive's health if recurring |
-| Backup **skips changes** after a dry-run | Dry-run wrote the manifest ([§3.1](#known-issue-dry-run-writes-the-manifest)) | Delete `.smartbackup_manifest.json`, run a real backup |
-| `--exclude` seems ignored | Known limitation ([§7.3](#known-limitation-persisted-exclusions-are-not-applied)) | Built-in list only; fix planned |
+| Backup **skips changes** after a dry-run | A SmartBackup **≤ 0.6.0** dry-run wrote the manifest (fixed in this release) | Delete `.smartbackup_manifest.json`, run a real backup |
+| `--exclude` has no visible effect | Pattern syntax doesn't match anything (glob vs exact name) | Check the matching rules in [§3.5](#35-what-gets-excluded) |
 | `Collision: … is a file, but should be a directory` | A file/folder type changed in the source tree | Auto-resolved (the conflicting entry is removed); informational |
 | `Full metadata copy failed … Falling back to basic copy` | ExFAT/FAT32 can't store full POSIX metadata | Expected; mtime is preserved manually, ownership/permissions aren't |
 | `No files found for backup!` | Source empty, wrong `--source`, or everything excluded | Check `--source`; check exclusions (§3.5) |
@@ -943,16 +926,14 @@ owned by root — `chown`/`mount` it read-write or pick another target.
 
 ### 8.5 Known limitations (current release)
 
-1. `--dry-run` writes/updates the manifest without copying files ([§3.1](#known-issue-dry-run-writes-the-manifest)).
-2. `--exclude` persists patterns but they aren't applied to the scan ([§7.3](#known-limitation-persisted-exclusions-are-not-applied)).
-3. Restore strategies `NEWER`/`RENAME` exist in the engine but aren't CLI-selectable ([§6.4](#64-conflict-resolution-strategies)).
-4. No CLI setters for `preferred_target`, `device_name`, `auto_watch_cooldown`,
+1. Restore strategies `NEWER`/`RENAME` exist in the engine but aren't CLI-selectable ([§6.4](#64-conflict-resolution-strategies)).
+2. No CLI setters for `preferred_target`, `device_name`, `auto_watch_cooldown`,
    `preferred_terminal` (edit `config.json`, §7.2).
-5. No built-in scheduler command (use OS tooling, §5.5).
-6. `restore` handles directories only — extract archives first (§6.5).
-7. No encryption, deduplication, versioning, or remote targets (§1).
+3. No built-in scheduler command (use OS tooling, §5.5).
+4. `restore` handles directories only — extract archives first (§6.5).
+5. No encryption, deduplication, versioning, or remote targets (§1).
 
-Fixes/wiring for items 1–5 are planned in [`docs/PLAN_WIRING_FIXES.md`](PLAN_WIRING_FIXES.md).
+Fixes for item 1 are planned in [`docs/PLAN_WIRING_FIXES.md`](PLAN_WIRING_FIXES.md).
 
 ---
 
@@ -966,7 +947,7 @@ smartbackup [OPTIONS]
   -t, --target PATH        Target drive/directory (default: auto-detect)
   -l, --label TEXT         Preferred target drive label
       --prompt             Interactive [Y/n/d] prompt mode
-      --dry-run            Simulate (⚠️ writes manifest — see §3.1)
+      --dry-run            Simulate (no copies, no manifest writes)
   -q, --quiet              Minimal output
       --exclude TEXT       Persist extra exclusion pattern(s) to config
       --list-drives        Show drives and exit
