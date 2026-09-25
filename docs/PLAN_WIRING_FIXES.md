@@ -28,7 +28,7 @@ noted). Locations are `file:line` as of v0.6.0. Companion document:
 
 ## 2. Phase 0 — Hotfixes (do first; small diffs, large impact)
 
-> **✅ Status: IMPLEMENTED** on branch `fix/v0.6.0-dryrun-manifest-exclusions` (targets 0.6.1).
+> **✅ Status: IMPLEMENTED** on branch `fix/v0.6.1-dryrun-manifest-exclusions` (release 0.6.1).
 > F1: `BackupEngine.is_dry_run` class flag gates legacy-layout migration, manifest
 > update+save, and archive creation; `DryRunBackupEngine` sets `is_dry_run = True`.
 > F2: `SmartBackup.run(..., exclusions=...)` receives `ConfigManager.get_exclusions()`

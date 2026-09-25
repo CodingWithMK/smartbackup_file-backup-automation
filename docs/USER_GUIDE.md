@@ -1,6 +1,6 @@
 # SmartBackup User Guide
 
-**Version tested against: `smartbackup 0.6.0`** · Platforms: Windows · macOS · Linux · Python 3.9+
+**Version tested against: `smartbackup 0.6.1`** · Platforms: Windows · macOS · Linux · Python 3.9+
 
 This guide is the single source of truth for using SmartBackup. Every command, flag, default
 value, file path, and behavior documented here was taken from (or verified against) the
@@ -105,7 +105,7 @@ uv pip install -e ".[dev]"
 
 ```bash
 smartbackup --version
-# smartbackup 0.6.0
+# smartbackup 0.6.1
 
 smartbackup --help          # full option list (shown for every command/subcommand too)
 ```
@@ -313,7 +313,7 @@ Every command supports `--help` (`smartbackup restore --help`, …).
 | `--compress` | | FORMAT | — | Compress the backup after copying: `zip` or `tar.gz` |
 | `--hash` | | | off | SHA-256 change detection for files **up to 50 MB** |
 | `--hash-all` | | | off | SHA-256 for **all** files regardless of size (implies `--hash`; slower) |
-| `--version` | `-v` | | — | Print `smartbackup 0.6.0` and exit |
+| `--version` | `-v` | | — | Print `smartbackup 0.6.1` and exit |
 | `--help` | `-h` | | — | Show help and exit |
 
 ### 4.2 Everyday recipes
@@ -912,7 +912,7 @@ owned by root — `chown`/`mount` it read-write or pick another target.
 | Watcher runs but **never prompts** | Drive doesn't match §5.1 (brand-new drive), or cooldown active, or headless | Seed the drive once manually; delete `watcher_state.json`; check `daemon status` |
 | Prompt appears but backups to nothing | — | Check the panel's Device ID matches the folder you expect (`--device-name`) |
 | Second backup re-copies *everything* | Manifest missing/corrupt (warning was printed) or `--no-manifest` used | Normal recovery — manifest rebuilds; investigate the drive's health if recurring |
-| Backup **skips changes** after a dry-run | A SmartBackup **≤ 0.6.0** dry-run wrote the manifest (fixed in this release) | Delete `.smartbackup_manifest.json`, run a real backup |
+| Backup **skips changes** after a dry-run | A SmartBackup **≤ 0.6.0** dry-run wrote the manifest (fixed in 0.6.1) | Delete `.smartbackup_manifest.json`, run a real backup |
 | `--exclude` has no visible effect | Pattern syntax doesn't match anything (glob vs exact name) | Check the matching rules in [§3.5](#35-what-gets-excluded) |
 | `Collision: … is a file, but should be a directory` | A file/folder type changed in the source tree | Auto-resolved (the conflicting entry is removed); informational |
 | `Full metadata copy failed … Falling back to basic copy` | ExFAT/FAT32 can't store full POSIX metadata | Expected; mtime is preserved manually, ownership/permissions aren't |
