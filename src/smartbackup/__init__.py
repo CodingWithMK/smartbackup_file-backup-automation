@@ -16,7 +16,7 @@ Quick Start:
     >>> backup.run()
 """
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 __author__ = "Muhammed Musab Kaya - @CodingWithMK"
 __license__ = "MIT"
 

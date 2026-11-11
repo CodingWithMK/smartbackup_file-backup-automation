@@ -97,7 +97,7 @@ class TestCliSurfaceSmoke:
 
         version = _cli(["--version"], env)
         _assert_ok(version)
-        assert "0.6.1" in version.stdout
+        assert "0.6.2" in version.stdout
 
         help_out = _cli(["--help"], env)
         _assert_ok(help_out)

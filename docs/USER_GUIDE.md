@@ -1,6 +1,6 @@
 # SmartBackup User Guide
 
-**Version tested against: `smartbackup 0.6.1`** · Platforms: Windows · macOS · Linux · Python 3.9+
+**Version tested against: `smartbackup 0.6.2`** · Platforms: Windows · macOS · Linux · Python 3.9+
 
 This guide is the single source of truth for using SmartBackup. Every command, flag, default
 value, file path, and behavior documented here was taken from (or verified against) the
@@ -105,7 +105,7 @@ uv pip install -e ".[dev]"
 
 ```bash
 smartbackup --version
-# smartbackup 0.6.1
+# smartbackup 0.6.2
 
 smartbackup --help          # full option list (shown for every command/subcommand too)
 ```
@@ -313,7 +313,7 @@ Every command supports `--help` (`smartbackup restore --help`, …).
 | `--compress` | | FORMAT | — | Compress the backup after copying: `zip` or `tar.gz` |
 | `--hash` | | | off | SHA-256 change detection for files **up to 50 MB** |
 | `--hash-all` | | | off | SHA-256 for **all** files regardless of size (implies `--hash`; slower) |
-| `--version` | `-v` | | — | Print `smartbackup 0.6.1` and exit |
+| `--version` | `-v` | | — | Print `smartbackup 0.6.2` and exit |
 | `--help` | `-h` | | — | Show help and exit |
 
 ### 4.2 Everyday recipes
