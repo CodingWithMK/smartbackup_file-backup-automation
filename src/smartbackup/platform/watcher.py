@@ -40,6 +40,45 @@ class DriveMatcher:
     def __init__(self, config_manager: Optional[ConfigManager] = None) -> None:
         self.config_manager = config_manager or ConfigManager()
 
+    def _get_volume_label(self, drive_path: Path) -> str:
+        """
+        Get the volume label for a drive path.
+
+        On Windows, queries GetVolumeInformationW for the real volume label.
+        On other platforms, returns drive_path.name.
+        """
+        if platform.system() == "Windows":
+            try:
+                import ctypes
+
+                kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+                volume_name_buffer = ctypes.create_unicode_buffer(261)
+                drive_str = str(drive_path)
+                if not drive_str.endswith("\\") and not drive_str.endswith("/"):
+                    drive_str += "\\"
+                res = kernel32.GetVolumeInformationW(
+                    drive_str,
+                    volume_name_buffer,
+                    261,
+                    None,
+                    None,
+                    None,
+                    None,
+                    0,
+                )
+                if isinstance(res, str) and res:
+                    return res
+                if volume_name_buffer.value:
+                    return volume_name_buffer.value
+            except Exception:
+                pass
+            return drive_path.name
+        return drive_path.name
+
+    def _get_drive_label(self, drive_path: Path) -> str:
+        """Alias for _get_volume_label."""
+        return self._get_volume_label(drive_path)
+
     def is_smartbackup_target(
         self, drive_path: Path, preferred_label: Optional[str] = None
     ) -> bool:
@@ -62,8 +101,12 @@ class DriveMatcher:
         # 1. Check preferred target label
         target_label = preferred_label or self.config_manager.get_preferred_target()
         if target_label:
+            target_lower = target_label.strip().lower()
+            volume_label = self._get_volume_label(drive_path)
             # Check drive path name or volume label
-            if drive_path.name.lower() == target_label.lower():
+            if drive_path.name.lower() == target_lower:
+                return True
+            if volume_label and volume_label.strip().lower() == target_lower:
                 return True
             # On Windows, check drive letter like "E:"
             if str(drive_path).rstrip(":\\/").lower() == target_label.rstrip(":\\/").lower():
@@ -292,16 +335,17 @@ class DeviceWatcher:
             kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
             bitmask = kernel32.GetLogicalDrives()
             for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-                if bitmask & 1:
-                    drive_path = Path(f"{letter}:\\")
-                    try:
-                        drive_type = kernel32.GetDriveTypeW(str(drive_path))
-                        # 2 = DRIVE_REMOVABLE, 3 = DRIVE_FIXED
-                        if drive_type in (2, 3) and drive_path.exists():
-                            drives.add(drive_path)
-                    except Exception:
-                        pass
-                bitmask >>= 1
+                bit_index = ord(letter) - ord("A")
+                if not (bitmask & (1 << bit_index)):
+                    continue
+                drive_path = Path(f"{letter}:\\")
+                try:
+                    drive_type = kernel32.GetDriveTypeW(str(drive_path))
+                    # 2 = DRIVE_REMOVABLE, 3 = DRIVE_FIXED
+                    if drive_type in (2, 3) and drive_path.exists():
+                        drives.add(drive_path)
+                except Exception:
+                    pass
         except Exception:
             # Fallback
             for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":

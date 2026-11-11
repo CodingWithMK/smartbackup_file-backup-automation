@@ -95,29 +95,36 @@ class PathResolver:
     def _find_windows_drives() -> list[tuple[Path, str, int]]:
         """Finds external drives on Windows."""
         drives: list[tuple[Path, str, int]] = []
+        system_drive = os.environ.get("SystemDrive", "C:").rstrip(":\\").upper()
+        home_drive = Path.home().drive.rstrip(":\\").upper()
+        ignored = {system_drive, home_drive, "A", "B"}
+
         try:
             import ctypes
 
             kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
 
-            # Iterate through all drive letters
             bitmask = kernel32.GetLogicalDrives()
-            for letter in "DEFGHIJKLMNOPQRSTUVWXYZ":
-                if bitmask & 1:
-                    drive_path = Path(f"{letter}:\\")
+            for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+                bit = ord(letter) - ord("A")
+                if not (bitmask & (1 << bit)) or letter in ignored:
+                    continue
+
+                drive_path = Path(f"{letter}:\\")
+                try:
                     drive_type = kernel32.GetDriveTypeW(str(drive_path))
 
                     # 2 = Removable, 3 = Fixed (external USB drives)
                     if drive_type in (2, 3) and drive_path.exists():
                         try:
-                            # Check if writable
-                            total, used, free = shutil.disk_usage(drive_path)
+                            # Check disk usage
+                            _, _, free = shutil.disk_usage(drive_path)
 
-                            # Try to get volume label
-                            volume_name_buffer = ctypes.create_unicode_buffer(261)
-                            kernel32.GetVolumeInformationW(
+                            # Query volume label
+                            buffer = ctypes.create_unicode_buffer(261)
+                            res = kernel32.GetVolumeInformationW(
                                 str(drive_path),
-                                volume_name_buffer,
+                                buffer,
                                 261,
                                 None,
                                 None,
@@ -125,24 +132,32 @@ class PathResolver:
                                 None,
                                 0,
                             )
-                            label = volume_name_buffer.value or f"Drive {letter}"
+                            if isinstance(res, str) and res:
+                                label = res
+                            else:
+                                label = buffer.value or f"Drive {letter}"
 
                             drives.append((drive_path, label, free))
                         except Exception:
                             pass
-
-                bitmask >>= 1
+                except Exception:
+                    pass
 
         except Exception:
-            # Fallback: Simple method
+            pass
+
+        # If drives is still empty or an exception occurs, provide a resilient fallback
+        if not drives:
             for letter in "DEFGHIJKLMNOPQRSTUVWXYZ":
+                if letter in ignored:
+                    continue
                 drive_path = Path(f"{letter}:\\")
-                if drive_path.exists():
-                    try:
+                try:
+                    if drive_path.exists():
                         _, _, free = shutil.disk_usage(drive_path)
                         drives.append((drive_path, f"Drive {letter}", free))
-                    except Exception:
-                        pass
+                except Exception:
+                    pass
 
         return drives
 

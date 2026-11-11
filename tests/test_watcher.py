@@ -141,6 +141,92 @@ class TestDriveMatcher:
             matches = matcher.find_matching_targets(drives)
             assert matches == [drive1]
 
+    def test_drive_matcher_windows_volume_label_matching(self):
+        """Verify Windows drive path E:\\ with volume label 'MyUSB' correctly matches preferred_target 'MyUSB'."""
+        import ctypes
+
+        mock_kernel32 = MagicMock()
+
+        def mock_get_volume_info(drive_str, buf, size, *args):
+            if "E:" in drive_str:
+                buf.value = "MyUSB"
+                return 1
+            return 0
+
+        mock_kernel32.GetVolumeInformationW.side_effect = mock_get_volume_info
+        mock_windll = MagicMock()
+        mock_windll.kernel32 = mock_kernel32
+
+        config_mgr = MagicMock(spec=ConfigManager)
+        config_mgr.get_preferred_target.return_value = "MyUSB"
+        config_mgr.get_device_name.return_value = "Test-Host"
+
+        drive = Path("E:\\")
+
+        with patch("platform.system", return_value="Windows"), \
+             patch.object(ctypes, "windll", mock_windll, create=True), \
+             patch.object(Path, "exists", return_value=True):
+
+            matcher = DriveMatcher(config_manager=config_mgr)
+            assert matcher.is_smartbackup_target(drive) is True
+
+    def test_drive_matcher_windows_volume_label_mismatch_returns_false(self):
+        """Verify Windows drive path with non-matching volume label returns False when no backup exists."""
+        import ctypes
+
+        mock_kernel32 = MagicMock()
+
+        def mock_get_volume_info(drive_str, buf, size, *args):
+            buf.value = "WorkFiles"
+            return 1
+
+        mock_kernel32.GetVolumeInformationW.side_effect = mock_get_volume_info
+        mock_windll = MagicMock()
+        mock_windll.kernel32 = mock_kernel32
+
+        config_mgr = MagicMock(spec=ConfigManager)
+        config_mgr.get_preferred_target.return_value = "MyUSB"
+        config_mgr.get_device_name.return_value = "Test-Host"
+
+        drive = Path("E:\\")
+
+        def fake_exists(self):
+            # Drive root exists, but Documents-Backup does not
+            return str(self) == str(drive)
+
+        with patch("platform.system", return_value="Windows"), \
+             patch.object(ctypes, "windll", mock_windll, create=True), \
+             patch.object(Path, "exists", autospec=True, side_effect=fake_exists):
+
+            matcher = DriveMatcher(config_manager=config_mgr)
+            assert matcher.is_smartbackup_target(drive) is False
+
+    def test_drive_matcher_get_volume_label_helper(self):
+        """Test _get_volume_label helper on Windows and non-Windows."""
+        import ctypes
+
+        mock_kernel32 = MagicMock()
+
+        def mock_get_volume_info(drive_str, buf, size, *args):
+            buf.value = "TestLabel"
+            return 1
+
+        mock_kernel32.GetVolumeInformationW.side_effect = mock_get_volume_info
+        mock_windll = MagicMock()
+        mock_windll.kernel32 = mock_kernel32
+
+        matcher = DriveMatcher()
+
+        # On Windows
+        with patch("platform.system", return_value="Windows"), \
+             patch.object(ctypes, "windll", mock_windll, create=True):
+            assert matcher._get_volume_label(Path("D:\\")) == "TestLabel"
+            assert matcher._get_drive_label(Path("D:\\")) == "TestLabel"
+
+        # On Darwin / Linux
+        with patch("platform.system", return_value="Darwin"):
+            assert matcher._get_volume_label(Path("/Volumes/TestStick")) == "TestStick"
+
 
 class TestDebounceLock:
     """Tests for DebounceLock."""
