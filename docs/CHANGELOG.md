@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-11-11
+
+### Fixed
+- **Windows external drive detection parity with macOS**:
+  - Fixed bitmask decoding offset bug where `kernel32.GetLogicalDrives()` was shifted sequentially from letter `D`, mapping drive letters to incorrect bits and preventing external drives from ever being detected on Windows.
+  - Implemented dynamic system and user home drive exclusion (`SystemDrive` and `Path.home().drive`), preventing backup targets on the host operating system partition.
+  - Added native Win32 volume label resolution via `kernel32.GetVolumeInformationW` in `DriveMatcher` and `PathResolver` to properly match configured target names (`preferred_target`), resolving the issue where Windows root drives (e.g. `E:\`) have an empty `Path.name`.
+  - Added resilient fallback logic in `PathResolver._find_windows_drives()` to scan drive letters `D-Z` when Win32 ctypes calls fail or return no drives.
+
+### Added
+- **Unit and regression tests for Windows external drive detection**:
+  - `test_find_windows_drives_bitmask_mapping`: Verifies Win32 bitmask decoding and system drive exclusion.
+  - `test_windows_system_drive_dynamic_exclusion`: Verifies dynamic exclusion of custom system drives (e.g. `D:`).
+  - `test_find_windows_drives_fallback_on_exception`: Verifies graceful fallback to filesystem inspection upon Win32 exceptions.
+  - `test_drive_matcher_windows_volume_label_matching`: Verifies volume label matching for Windows root drive paths against `preferred_target`.
+  - `test_drive_matcher_windows_volume_label_mismatch_returns_false`: Verifies non-matching volume labels without backup manifests evaluate to `False`.
+  - `test_drive_matcher_get_volume_label_helper`: Verifies cross-platform behavior of `_get_volume_label`.
+
 ## [0.6.1] - 2026-09-25
 
 ### Added
