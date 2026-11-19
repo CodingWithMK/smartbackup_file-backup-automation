@@ -15,7 +15,7 @@ noted). Locations are `file:line` as of v0.6.0. Companion document:
 |----|-------|----------|------|-------|--------|
 | F1 | `--dry-run` writes/updates the manifest without copying → later real backups silently skip changes | 🔴 **Critical** | Bug (proven) | 0 | ✅ fixed (0.6.1) |
 | F2 | `ConfigManager.get_exclusions()` never called → `--exclude` / `config.json` exclusions are inert | 🔴 **High** | Missing wiring | 0 | ✅ fixed (0.6.1) |
-| F3 | Restore strategies `NEWER` (implemented) and `RENAME` (stub) not selectable via CLI | 🟠 Medium | Missing wiring | 1 | ⬜ pending |
+| F3 | Restore strategies `NEWER` (implemented) and `RENAME` (stub) not selectable via CLI | 🟠 Medium | Missing wiring | 1 | ✅ fixed (0.7.0) |
 | F4 | `set_preferred_target()`, `set_device_name()`, `set_preferred_terminal()`, `set/get_auto_watch_cooldown()` have no CLI path | 🟠 Medium | Missing wiring | 2 | ⬜ pending |
 | F5 | `watch --cooldown` ignores `auto_watch_cooldown` config (hard-coded default 300) | 🟡 Low-Med | Missing wiring | 2 | ⬜ pending |
 | F6 | `SchedulerHelper.setup_scheduled_backup()` (+3 OS helpers) unreachable — no `schedule` command | 🟡 Low | Missing command | 3 | ⬜ pending |
@@ -126,7 +126,13 @@ them to be inert will now have files excluded — call out in `CHANGELOG.md`.
 
 ## 3. Phase 1 — Restore conflict strategies
 
-### F3 — Expose `NEWER`, implement `RENAME` 🟠
+> **✅ Status: IMPLEMENTED** on branch `feat/v0.7.0-restore-conflict-strategies`
+> (release 0.7.0). `--conflict [skip|overwrite|newer|rename]` is wired through
+> the CLI, `RENAME` is implemented (keep-both with collision-safe suffixes), and
+> `--overwrite` remains a backward-compatible alias. Regression tests added in
+> `tests/test_restore.py`, `tests/test_restore_cli.py` and `tests/test_sandbox_smoke.py`.
+
+### F3 — Expose `NEWER`, implement `RENAME` 🟠 ✅ fixed
 
 **Where:** `core/restore.py:23-30` enum; `NEWER` logic exists in
 `_restore_single_file()` (`:288-292`) but `restore()` hard-maps the boolean
@@ -308,9 +314,10 @@ python main.py --source SRC --target TGT --exclude "*.iso"
 # a *.iso file in SRC must NOT appear in TGT  ✅ verified
 # (and the pattern persists: later runs exclude *.iso without the flag)
 
-# F3 (currently unavailable — Phase 1)
-smartbackup restore --source TGT --conflict newer    # must be accepted
-smartbackup restore --source TGT --conflict rename    # must keep both files
+# F3 (WAS UNAVAILABLE — now PASSING, verified in 0.7.0)
+smartbackup restore --source TGT --conflict newer    # accepted  ✅ verified
+smartbackup restore --source TGT --conflict rename    # keeps both files  ✅ verified
+# an unknown value must exit 1 and list the valid strategies  ✅ verified
 
 # F11 (WAS FAILING — now PASSING, verified in 0.6.3)
 python main.py --source SRC --target /path/that/does-not-exist

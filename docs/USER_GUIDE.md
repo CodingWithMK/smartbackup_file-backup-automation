@@ -1,6 +1,6 @@
 # SmartBackup User Guide
 
-**Version tested against: `smartbackup 0.6.3`** · Platforms: Windows · macOS · Linux · Python 3.9+
+**Version tested against: `smartbackup 0.7.0`** · Platforms: Windows · macOS · Linux · Python 3.9+
 
 This guide is the single source of truth for using SmartBackup. Every command, flag, default
 value, file path, and behavior documented here was taken from (or verified against) the
@@ -105,7 +105,7 @@ uv pip install -e ".[dev]"
 
 ```bash
 smartbackup --version
-# smartbackup 0.6.3
+# smartbackup 0.7.0
 
 smartbackup --help          # full option list (shown for every command/subcommand too)
 ```
@@ -313,7 +313,7 @@ Every command supports `--help` (`smartbackup restore --help`, …).
 | `--compress` | | FORMAT | — | Compress the backup after copying: `zip` or `tar.gz` |
 | `--hash` | | | off | SHA-256 change detection for files **up to 50 MB** |
 | `--hash-all` | | | off | SHA-256 for **all** files regardless of size (implies `--hash`; slower) |
-| `--version` | `-v` | | — | Print `smartbackup 0.6.3` and exit |
+| `--version` | `-v` | | — | Print `smartbackup 0.7.0` and exit |
 | `--help` | `-h` | | — | Show help and exit |
 
 ### 4.2 Everyday recipes
@@ -399,7 +399,8 @@ smartbackup --no-manifest                          # opt out of manifest trackin
 | `--source` | `-s` | PATH | **Required.** The drive/directory that *contains* `Documents-Backup/` |
 | `--target` | `-t` | PATH | Restore destination (default: the original source path recorded in the manifest) |
 | `--pattern` | `-p` | TEXT (repeatable) | Glob filter(s), matched against the relative path (`fnmatch`), e.g. `"*.py"` |
-| `--overwrite` | | | Overwrite existing files (conflict strategy `OVERWRITE`; default is `SKIP`) |
+| `--overwrite` | | | Overwrite existing files (legacy alias for `--conflict overwrite`) |
+| `--conflict` | | TEXT | Conflict strategy: `skip` (default), `overwrite`, `newer`, `rename`. Takes precedence over `--overwrite` |
 | `--dry-run` | | | Preview the restore without copying anything |
 | `--list` | | | List files in the backup and exit |
 | `--device-name` | | TEXT | Device subfolder to restore from (default: auto-detected hostname, then legacy layout) |
@@ -688,14 +689,13 @@ When the destination file already exists:
 
 | Strategy | Behavior | Availability |
 |---|---|---|
-| **SKIP** | Keep the existing local file; count it as `Skipped ("File exists")` | ✅ **Default** (no flag) |
-| **OVERWRITE** | Replace the local file with the backed-up version | ✅ `--overwrite` |
-| **NEWER** | Overwrite only if the backup copy's mtime is newer than the local file | ⚠️ Implemented in the restore engine but **not selectable from the CLI** (no flag maps to it yet) |
-| **RENAME** | Keep both, renaming the restored file | ⚠️ Declared in the engine's `ConflictResolution` enum but **not implemented** (falls back to overwrite semantics if ever selected) |
+| **SKIP** | Keep the existing local file; count it as `Skipped ("File exists")` | ✅ **Default** (no flag, or `--conflict skip`) |
+| **OVERWRITE** | Replace the local file with the backed-up version | ✅ `--conflict overwrite` (or the legacy `--overwrite`) |
+| **NEWER** | Overwrite only if the backup copy's mtime is newer than the local file; otherwise skip | ✅ `--conflict newer` |
+| **RENAME** | Keep both: the local file stays put and the restored copy is written beside it as `<name>.restored-<YYYYmmdd-HHMMSS>.<ext>` (collisions get `-1`, `-2`, …) | ✅ `--conflict rename` |
 
-> Until the wiring fix lands (see [`docs/PLAN_WIRING_FIXES.md`](PLAN_WIRING_FIXES.md)), your
-> only CLI-selectable strategies are **SKIP** (default) and **OVERWRITE** (`--overwrite`).
-> Emulate NEWER manually: restore to a scratch `--target`, then copy only the files you want.
+> If both `--conflict` and `--overwrite` are supplied, `--conflict` wins.
+> An unknown `--conflict` value exits `1` and lists the valid strategies.
 
 ### 6.5 Restoring from a compressed archive
 
@@ -927,12 +927,11 @@ owned by root — `chown`/`mount` it read-write or pick another target.
 
 ### 8.5 Known limitations (current release)
 
-1. Restore strategies `NEWER`/`RENAME` exist in the engine but aren't CLI-selectable ([§6.4](#64-conflict-resolution-strategies)).
-2. No CLI setters for `preferred_target`, `device_name`, `auto_watch_cooldown`,
+1. No CLI setters for `preferred_target`, `device_name`, `auto_watch_cooldown`,
    `preferred_terminal` (edit `config.json`, §7.2).
-3. No built-in scheduler command (use OS tooling, §5.5).
-4. `restore` handles directories only — extract archives first (§6.5).
-5. No encryption, deduplication, versioning, or remote targets (§1).
+2. No built-in scheduler command (use OS tooling, §5.5).
+3. `restore` handles directories only — extract archives first (§6.5).
+4. No encryption, deduplication, versioning, or remote targets (§1).
 
 Fixes for item 1 are planned in [`docs/PLAN_WIRING_FIXES.md`](PLAN_WIRING_FIXES.md).
 
@@ -962,7 +961,7 @@ smartbackup [OPTIONS]
       --hash-all           SHA-256 for all files
   -v, --version            Print version and exit
 
-smartbackup restore  -s PATH [-t PATH] [-p GLOB]... [--overwrite] [--dry-run] [--list] [--device-name TEXT]
+smartbackup restore  -s PATH [-t PATH] [-p GLOB]... [--conflict skip|overwrite|newer|rename] [--overwrite] [--dry-run] [--list] [--device-name TEXT]
 smartbackup compress -t PATH [-f zip|tar.gz] [--device-name TEXT] [--remove-source]
 smartbackup watch    [-i SECONDS] [-c SECONDS]
 smartbackup daemon   install | status | uninstall

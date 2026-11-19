@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-11-19
+
+### Added
+- **Restore conflict strategies are now selectable and complete (F3)**:
+  - `smartbackup restore --conflict [skip|overwrite|newer|rename]` exposes the
+    engine's `ConflictResolution` enum. `skip` remains the default.
+  - `NEWER` was implemented in the engine but unreachable from the CLI; it now
+    overwrites only when the backed-up copy's mtime is newer than the local file.
+  - `RENAME` was declared but unimplemented (it silently overwrote the local
+    file). It now keeps both files, writing the restored copy as
+    `<name>.restored-<YYYYmmdd-HHMMSS>.<ext>` with collision-safe `-1`, `-2`, …
+    suffixes.
+  - `--overwrite` is retained as a legacy alias for `--conflict overwrite`;
+    when both are given, `--conflict` wins. An unknown value exits `1` with the
+    valid strategy list.
+  - Dry-run `RENAME` reports the intended name without writing anything.
+
+### Added
+- **Regression coverage for restore conflicts**:
+  - `tests/test_restore.py` — engine-level `NEWER` skip/overwrite, `RENAME`
+    keep-both and collision safety, dry-run, plus controls for the legacy
+    `SKIP`/`OVERWRITE` paths.
+  - `tests/test_restore_cli.py` — real Typer command coverage for the new flag,
+    invalid values, the `--overwrite` alias and flag precedence.
+  - `tests/test_sandbox_smoke.py` — black-box subprocess coverage for
+    `--conflict rename` and invalid values.
+
 ## [0.6.3] - 2026-11-19
 
 ### Fixed
