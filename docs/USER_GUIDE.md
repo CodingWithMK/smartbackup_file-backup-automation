@@ -1,6 +1,6 @@
 # SmartBackup User Guide
 
-**Version tested against: `smartbackup 0.6.2`** · Platforms: Windows · macOS · Linux · Python 3.9+
+**Version tested against: `smartbackup 0.6.3`** · Platforms: Windows · macOS · Linux · Python 3.9+
 
 This guide is the single source of truth for using SmartBackup. Every command, flag, default
 value, file path, and behavior documented here was taken from (or verified against) the
@@ -105,7 +105,7 @@ uv pip install -e ".[dev]"
 
 ```bash
 smartbackup --version
-# smartbackup 0.6.2
+# smartbackup 0.6.3
 
 smartbackup --help          # full option list (shown for every command/subcommand too)
 ```
@@ -313,7 +313,7 @@ Every command supports `--help` (`smartbackup restore --help`, …).
 | `--compress` | | FORMAT | — | Compress the backup after copying: `zip` or `tar.gz` |
 | `--hash` | | | off | SHA-256 change detection for files **up to 50 MB** |
 | `--hash-all` | | | off | SHA-256 for **all** files regardless of size (implies `--hash`; slower) |
-| `--version` | `-v` | | — | Print `smartbackup 0.6.2` and exit |
+| `--version` | `-v` | | — | Print `smartbackup 0.6.3` and exit |
 | `--help` | `-h` | | — | Show help and exit |
 
 ### 4.2 Everyday recipes
@@ -907,6 +907,7 @@ owned by root — `chown`/`mount` it read-write or pick another target.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `EXTERNAL STORAGE MEDIUM NOT FOUND` | No eligible drive ≥ 100 MB free / not mounted / wrong filesystem | `--list-drives`; check the mount; or use `--target`; or pick option `[1]` for a local temp backup |
+| Backup reported success although the target was missing | SmartBackup **≤ 0.6.2** did not count path-validation failures as errors | Fixed in 0.6.3 — update; the CLI now exits `1` and the summary shows `Errors: 1` |
 | Backup went to an unexpected disk | Multiple candidate drives, auto-pick took the first | Pin with `--target` or `--label` / `preferred_target` |
 | `Please specify backup directory with --target` | `--list-devices`, `--show-manifest`, or `--verify` without `--target` | Add `--target <drive root>` |
 | Watcher runs but **never prompts** | Drive doesn't match §5.1 (brand-new drive), or cooldown active, or headless | Seed the drive once manually; delete `watcher_state.json`; check `daemon status` |

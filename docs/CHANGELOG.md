@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-11-19
+
+### Fixed
+- **Failed path validation no longer reports success (F11)**: when the backup medium
+  (target) was missing or unwritable, `BackupEngine.run_backup()` returned a result with
+  `errors == 0`. `SmartBackup.run()` therefore returned `True`, the CLI exited `0`, and the
+  completion handler printed "Backup completed successfully!" even though nothing was
+  copied — contradicting the documented exit-code contract (§4.7 of the User Guide).
+  Validation failures are now counted as an error, so the summary reports `Errors: 1`, the
+  CLI exits `1`, and the completion message is "Backup completed with errors!".
+  The run log is also skipped when the medium is absent, instead of recreating the missing
+  target directory, and a log write failure can no longer escape as an uncaught exception.
+
+### Added
+- **Validation-failure regression coverage**:
+  - `tests/test_validation_failure_exit.py` — engine, public-API and real-CLI coverage for
+    missing source/target and unwritable-medium validation, plus controls proving healthy
+    runs still succeed.
+  - `tests/test_sandbox_smoke.py` — black-box subprocess coverage (normal and `--dry-run`)
+    asserting exit `1`, the error completion message, and that the missing target is not
+    created.
+
 ## [0.6.2] - 2026-11-11
 
 ### Fixed
