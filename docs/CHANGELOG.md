@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-11-19
+
+### Added
+- **`smartbackup config` command group (F4)**: `ConfigManager` already had
+  setters for `preferred_target`, `device_name`, `auto_watch_cooldown` and
+  `preferred_terminal`, but nothing in production called them, so the keys
+  could only be changed by hand-editing `config.json`. The new group provides
+  `config list`, `get <key>`, `set <key> <value>`, `unset <key>`,
+  `exclude <pattern>...` and `unexclude <pattern>...`.
+  - `auto_watch_cooldown` is validated as an integer ≥ 0.
+  - `device_name` is sanitized to a filesystem-safe folder name.
+  - `exclusions` is managed only through `exclude`/`unexclude`.
+  - Unknown keys exit `1` and list the valid keys; invalid values never write.
+- **`ConfigManager.remove_exclusion()`**: removes a persisted pattern (no-op
+  when absent), powering `config unexclude`.
+- **`sanitize_device_name()`** in `platform/identity.py`, reused by
+  `get_device_name()` so CLI writes follow the same rules as hostname detection.
+
+### Fixed
+- **`watch --cooldown` now honors `auto_watch_cooldown` (F5)**: the flag
+  defaulted to a hard-coded `300` and the config key was never read. Resolution
+  is now `--cooldown` flag → `auto_watch_cooldown` config → `300`. A corrupt
+  config value falls back to `300` instead of crashing the watcher.
+
+### Added
+- **Regression coverage for the config front door**:
+  - `tests/test_config_cli.py` — isolated-config roundtrips for list/get/set/
+    unset/exclude/unexclude, sanitization, validation and no-write-on-error
+    controls.
+  - `tests/test_daemon_cli.py` — watcher cooldown resolution (config, flag
+    precedence, default and corrupt-config fallback).
+  - `tests/test_sandbox_smoke.py` — subprocess config set/get/unset and
+    exclude/unexclude roundtrips.
+
 ## [0.7.0] - 2026-11-19
 
 ### Added
@@ -39,7 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (target) was missing or unwritable, `BackupEngine.run_backup()` returned a result with
   `errors == 0`. `SmartBackup.run()` therefore returned `True`, the CLI exited `0`, and the
   completion handler printed "Backup completed successfully!" even though nothing was
-  copied — contradicting the documented exit-code contract (§4.7 of the User Guide).
+  copied — contradicting the documented exit-code contract (§4.8 of the User Guide).
   Validation failures are now counted as an error, so the summary reports `Errors: 1`, the
   CLI exits `1`, and the completion message is "Backup completed with errors!".
   The run log is also skipped when the medium is absent, instead of recreating the missing

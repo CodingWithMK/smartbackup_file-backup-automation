@@ -1,6 +1,6 @@
 # SmartBackup User Guide
 
-**Version tested against: `smartbackup 0.7.0`** · Platforms: Windows · macOS · Linux · Python 3.9+
+**Version tested against: `smartbackup 0.7.1`** · Platforms: Windows · macOS · Linux · Python 3.9+
 
 This guide is the single source of truth for using SmartBackup. Every command, flag, default
 value, file path, and behavior documented here was taken from (or verified against) the
@@ -105,7 +105,7 @@ uv pip install -e ".[dev]"
 
 ```bash
 smartbackup --version
-# smartbackup 0.7.0
+# smartbackup 0.7.1
 
 smartbackup --help          # full option list (shown for every command/subcommand too)
 ```
@@ -285,6 +285,9 @@ smartbackup [OPTIONS]                    # default action = run a backup
 ├── restore [OPTIONS]                    # restore files from a backup
 ├── compress [OPTIONS]                   # archive an existing backup
 ├── watch [OPTIONS]                      # foreground drive watcher
+├── config                              # inspect/update persistent config
+│   ├── list / get / set / unset
+│   └── exclude / unexclude
 └── daemon                              # background watcher service
     ├── install
     ├── status
@@ -313,7 +316,7 @@ Every command supports `--help` (`smartbackup restore --help`, …).
 | `--compress` | | FORMAT | — | Compress the backup after copying: `zip` or `tar.gz` |
 | `--hash` | | | off | SHA-256 change detection for files **up to 50 MB** |
 | `--hash-all` | | | off | SHA-256 for **all** files regardless of size (implies `--hash`; slower) |
-| `--version` | `-v` | | — | Print `smartbackup 0.7.0` and exit |
+| `--version` | `-v` | | — | Print `smartbackup 0.7.1` and exit |
 | `--help` | `-h` | | — | Show help and exit |
 
 ### 4.2 Everyday recipes
@@ -420,9 +423,33 @@ smartbackup --no-manifest                          # opt out of manifest trackin
 | Option | Short | Argument | Default | Description |
 |---|---|---|---|---|
 | `--interval` | `-i` | FLOAT | `2.5` | Polling interval in seconds |
-| `--cooldown` | `-c` | INTEGER | `300` | Cooldown (seconds) between prompts for the same drive |
+| `--cooldown` | `-c` | INTEGER | config `auto_watch_cooldown`, else `300` | Cooldown (seconds) between prompts for the same drive; the flag overrides the config value |
 
-### 4.6 `smartbackup daemon` subcommands
+### 4.6 `smartbackup config` subcommands
+
+| Command | Description |
+|---|---|
+| `smartbackup config list` | Show every key, its value (or `(not set)`) and the config file path |
+| `smartbackup config get <key>` | Print one value |
+| `smartbackup config set <key> <value>` | Validate and persist one value |
+| `smartbackup config unset <key>` | Remove a key so its default applies again |
+| `smartbackup config exclude <pattern>...` | Add custom exclusion patterns |
+| `smartbackup config unexclude <pattern>...` | Remove custom exclusion patterns |
+
+Supported keys: `preferred_target`, `device_name` (sanitized to a filesystem-safe folder
+name), `auto_watch_cooldown` (integer ≥ 0), `preferred_terminal`, and `exclusions`
+(managed only through `exclude`/`unexclude`). Unknown keys exit `1` with the valid list.
+
+```bash
+smartbackup config set auto_watch_cooldown 60
+smartbackup config set device_name "Work Laptop"    # stored as Work-Laptop
+smartbackup config set preferred_target MY_BACKUP_DISK
+smartbackup config exclude "*.iso" "LargeDatasets"
+smartbackup config unexclude "*.iso"
+smartbackup config list
+```
+
+### 4.7 `smartbackup daemon` subcommands
 
 | Command | Description |
 |---|---|
@@ -432,7 +459,7 @@ smartbackup --no-manifest                          # opt out of manifest trackin
 
 No options; details in [§5](#5-auto-detect-daemon--watcher-guide).
 
-### 4.7 Exit codes
+### 4.8 Exit codes
 
 | Code | Meaning |
 |---|---|
@@ -755,11 +782,11 @@ The file is created on first write. The config directory also holds `watcher_sta
 
 | Key | Type | Default | Effect | Settable from CLI? |
 |---|---|---|---|---|
-| `exclusions` | list of strings | `[]` (merged with built-ins) | Custom exclusion patterns | ✅ `--exclude` appends here and applies (see below) |
-| `preferred_target` | string | none | Drive label used to pick the target and to match watcher prompts (case-insensitive) | ❌ edit JSON manually |
-| `device_name` | string | none (use hostname) | Overrides the auto-detected device name (used by the watcher matcher) | ❌ edit JSON manually (`--device-name` is per-run only) |
-| `auto_watch_cooldown` | int (seconds) | `300` | Watcher debounce cooldown | ❌ edit JSON manually (`watch --cooldown` is per-run only) |
-| `preferred_terminal` | string | none | Terminal emulator for spawned prompt windows: `iterm`/`iterm2` on macOS, any emulator binary name on Linux | ❌ edit JSON manually |
+| `exclusions` | list of strings | `[]` (merged with built-ins) | Custom exclusion patterns | ✅ `--exclude` appends here and applies; `config exclude` / `config unexclude` manage it |
+| `preferred_target` | string | none | Drive label used to pick the target and to match watcher prompts (case-insensitive) | ✅ `config set preferred_target` |
+| `device_name` | string | none (use hostname) | Overrides the auto-detected device name (used by the watcher matcher) | ✅ `config set device_name` (sanitized); `--device-name` is per-run only |
+| `auto_watch_cooldown` | int (seconds) | `300` | Watcher debounce cooldown | ✅ `config set auto_watch_cooldown`; `watch --cooldown` overrides it per run |
+| `preferred_terminal` | string | none | Terminal emulator for spawned prompt windows: `iterm`/`iterm2` on macOS, any emulator binary name on Linux | ✅ `config set preferred_terminal` |
 
 Example `config.json`:
 
@@ -773,10 +800,10 @@ Example `config.json`:
 }
 ```
 
-> The `❌ edit JSON manually` entries are functional (the code reads them) but have **no CLI
-> setter** yet — planned in [`docs/PLAN_WIRING_FIXES.md`](PLAN_WIRING_FIXES.md). Keep the
-> JSON valid (commas between entries); SmartBackup tolerates a corrupt file by treating it
-> as empty.
+> Every key above is settable from the CLI with `smartbackup config set <key> <value>`
+> (§4.6). The watcher cooldown resolves as `watch --cooldown` → `auto_watch_cooldown`
+> config → `300`. Keep the JSON valid (commas between entries); SmartBackup tolerates a
+> corrupt file by treating it as empty, and an invalid cooldown falls back to `300`.
 
 ### 7.3 Adding custom exclusions
 
@@ -802,8 +829,8 @@ runs — the flag does not create a one-shot exclusion).
 **By editing the file:** add patterns to the `exclusions` array in `config.json` (same
 syntax: exact names like `Downloads`, globs like `*.iso`). Matching rules: see §3.5.
 
-**Removing a persisted pattern:** edit `config.json` and delete it from the `exclusions`
-array (there is no `--include`/remove flag).
+**Removing a persisted pattern:** `smartbackup config unexclude "*.iso"` (or edit the
+`exclusions` array in `config.json`).
 
 ### 7.4 Defining a preferred backup volume (`preferred_target`)
 
@@ -927,13 +954,11 @@ owned by root — `chown`/`mount` it read-write or pick another target.
 
 ### 8.5 Known limitations (current release)
 
-1. No CLI setters for `preferred_target`, `device_name`, `auto_watch_cooldown`,
-   `preferred_terminal` (edit `config.json`, §7.2).
-2. No built-in scheduler command (use OS tooling, §5.5).
-3. `restore` handles directories only — extract archives first (§6.5).
-4. No encryption, deduplication, versioning, or remote targets (§1).
+1. No built-in scheduler command (use OS tooling, §5.5).
+2. `restore` handles directories only — extract archives first (§6.5).
+3. No encryption, deduplication, versioning, or remote targets (§1).
 
-Fixes for item 1 are planned in [`docs/PLAN_WIRING_FIXES.md`](PLAN_WIRING_FIXES.md).
+Remaining wiring items are tracked in [`docs/PLAN_WIRING_FIXES.md`](PLAN_WIRING_FIXES.md).
 
 ---
 
@@ -964,6 +989,7 @@ smartbackup [OPTIONS]
 smartbackup restore  -s PATH [-t PATH] [-p GLOB]... [--conflict skip|overwrite|newer|rename] [--overwrite] [--dry-run] [--list] [--device-name TEXT]
 smartbackup compress -t PATH [-f zip|tar.gz] [--device-name TEXT] [--remove-source]
 smartbackup watch    [-i SECONDS] [-c SECONDS]
+smartbackup config   list | get KEY | set KEY VALUE | unset KEY | exclude PATTERN... | unexclude PATTERN...
 smartbackup daemon   install | status | uninstall
 ```
 

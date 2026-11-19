@@ -16,8 +16,8 @@ noted). Locations are `file:line` as of v0.6.0. Companion document:
 | F1 | `--dry-run` writes/updates the manifest without copying → later real backups silently skip changes | 🔴 **Critical** | Bug (proven) | 0 | ✅ fixed (0.6.1) |
 | F2 | `ConfigManager.get_exclusions()` never called → `--exclude` / `config.json` exclusions are inert | 🔴 **High** | Missing wiring | 0 | ✅ fixed (0.6.1) |
 | F3 | Restore strategies `NEWER` (implemented) and `RENAME` (stub) not selectable via CLI | 🟠 Medium | Missing wiring | 1 | ✅ fixed (0.7.0) |
-| F4 | `set_preferred_target()`, `set_device_name()`, `set_preferred_terminal()`, `set/get_auto_watch_cooldown()` have no CLI path | 🟠 Medium | Missing wiring | 2 | ⬜ pending |
-| F5 | `watch --cooldown` ignores `auto_watch_cooldown` config (hard-coded default 300) | 🟡 Low-Med | Missing wiring | 2 | ⬜ pending |
+| F4 | `set_preferred_target()`, `set_device_name()`, `set_preferred_terminal()`, `set/get_auto_watch_cooldown()` have no CLI path | 🟠 Medium | Missing wiring | 2 | ✅ fixed (0.7.1) |
+| F5 | `watch --cooldown` ignores `auto_watch_cooldown` config (hard-coded default 300) | 🟡 Low-Med | Missing wiring | 2 | ✅ fixed (0.7.1) |
 | F6 | `SchedulerHelper.setup_scheduled_backup()` (+3 OS helpers) unreachable — no `schedule` command | 🟡 Low | Missing command | 3 | ⬜ pending |
 | F7 | `RestoreEngine.list_files()` / `get_manifest_info()` unused — CLI reimplements listing | 🟡 Low | Duplication | 3 | ⬜ pending |
 | F8 | `DeviceDetector.validate_device()` unused — duplicates the engine's write test | 🟡 Low | Duplication | 3 | ⬜ pending |
@@ -167,7 +167,14 @@ them to be inert will now have files excluded — call out in `CHANGELOG.md`.
 
 ## 4. Phase 2 — Config setters need a front door
 
-### F4 — `config` subcommand group 🟠
+> **✅ Status: IMPLEMENTED** on branch `feat/v0.7.1-config-cli` (release 0.7.1).
+> `smartbackup config list|get|set|unset|exclude|unexclude` wires every setter,
+> `ConfigManager.remove_exclusion()` backs `unexclude`, and `watch --cooldown`
+> now resolves flag → `auto_watch_cooldown` → 300. Tests in
+> `tests/test_config_cli.py`, `tests/test_daemon_cli.py` and
+> `tests/test_sandbox_smoke.py`.
+
+### F4 — `config` subcommand group 🟠 ✅ fixed
 
 **Dead surface (verified):** `set_preferred_target()` (`config.py:185-189`),
 `set_device_name()` (`:196-200`), `set_auto_watch_cooldown()` (`:207-211`),
@@ -193,7 +200,7 @@ Allowed keys with validation: `preferred_target` (str), `device_name` (str, sani
 hint values `iterm`/`iterm2` on macOS), `exclusions` (list — via `exclude`/`unexclude`).
 Unknown key → exit 1 with the valid-key list.
 
-### F5 — `watch` should honor `auto_watch_cooldown` 🟡
+### F5 — `watch` should honor `auto_watch_cooldown` 🟡 ✅ fixed
 
 **Where:** `cli.py:73-74` defaults `--cooldown` to `300`; `watcher.py:263` takes it as a
 constructor arg; nothing reads `get_auto_watch_cooldown()` (`config.py:213-216`).
@@ -322,4 +329,17 @@ smartbackup restore --source TGT --conflict rename    # keeps both files  ✅ ve
 # F11 (WAS FAILING — now PASSING, verified in 0.6.3)
 python main.py --source SRC --target /path/that/does-not-exist
 # must exit 1, print "Backup completed with errors!", and NOT create the target  ✅ verified
+
+# F4 (WAS UNAVAILABLE — now PASSING, verified in 0.7.1)
+smartbackup config set auto_watch_cooldown 42
+smartbackup config get auto_watch_cooldown          # prints 42  ✅ verified
+smartbackup config set device_name "My Laptop!!"    # stored as My-Laptop  ✅ verified
+smartbackup config exclude "*.iso"
+smartbackup config unexclude "*.iso"                # removed  ✅ verified
+smartbackup config set bogus x                      # exit 1 + valid keys  ✅ verified
+
+# F5 (WAS FAILING — now PASSING, verified in 0.7.1)
+smartbackup config set auto_watch_cooldown 42
+smartbackup watch                                   # banner: Debounce cooldown: 42s  ✅ verified
+smartbackup watch --cooldown 7                      # flag wins over config  ✅ verified
 ```
