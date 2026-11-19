@@ -1,5 +1,5 @@
 """
-End-to-End (E2E) Virtualized Integration Tests for SmartBackup v0.6.2.
+End-to-End (E2E) Virtualized Integration Tests for SmartBackup v0.6.3.
 Simulates real-world drive mount lifecycles, prompt interactions, and backup execution
 with zero external hardware dependencies.
 """

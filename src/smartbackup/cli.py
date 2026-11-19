@@ -25,7 +25,7 @@ from smartbackup.platform.terminal import TerminalSpawner
 from smartbackup.platform.watcher import DeviceWatcher
 from smartbackup.ui.logger import BackupLogger
 
-__version__ = "0.6.2"
+__version__ = "0.6.3"
 
 console = Console(highlight=False)
 
