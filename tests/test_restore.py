@@ -1,5 +1,7 @@
 """Tests for the restore engine."""
 
+import os
+import time
 from pathlib import Path
 
 import pytest
@@ -303,3 +305,116 @@ class TestConflictResolution:
         assert ConflictResolution.OVERWRITE.value == 2
         assert ConflictResolution.RENAME.value == 3
         assert ConflictResolution.NEWER.value == 4
+
+
+class TestConflictStrategies:
+    """F3: NEWER selectable through the engine and RENAME actually implemented.
+
+    Before this fix `restore()` only accepted the `overwrite` boolean and
+    hard-mapped it to OVERWRITE/SKIP, so NEWER was unreachable and RENAME
+    fell through to plain overwrite (destroying the local file).
+    """
+
+    @pytest.fixture
+    def conflict_setup(self, tmp_path: Path) -> tuple:
+        """One backup file and a conflicting local file."""
+        backup_base = tmp_path / "backup"
+        backup_folder = backup_base / "Documents-Backup"
+        backup_folder.mkdir(parents=True)
+        (backup_folder / "file1.txt").write_text("BACKUP CONTENT")
+
+        target = tmp_path / "restored"
+        target.mkdir()
+        (target / "file1.txt").write_text("LOCAL CONTENT")
+
+        return backup_base, target
+
+    def test_conflict_newer_skips_when_target_is_newer(self, conflict_setup: tuple) -> None:
+        """An older backup copy must not replace a newer local file."""
+        backup_base, target = conflict_setup
+        old = time.time() - 3600
+        os.utime(backup_base / "Documents-Backup" / "file1.txt", (old, old))
+
+        engine = RestoreEngine(backup_path=backup_base, target_path=target)
+        result = engine.restore(conflict=ConflictResolution.NEWER)
+
+        assert result.errors == 0
+        assert result.skipped_files == 1
+        assert result.overwritten_files == 0
+        assert (target / "file1.txt").read_text() == "LOCAL CONTENT"
+
+    def test_conflict_newer_overwrites_when_backup_is_newer(self, conflict_setup: tuple) -> None:
+        """A newer backup copy must replace the older local file."""
+        backup_base, target = conflict_setup
+        old = time.time() - 3600
+        os.utime(target / "file1.txt", (old, old))
+
+        engine = RestoreEngine(backup_path=backup_base, target_path=target)
+        result = engine.restore(conflict=ConflictResolution.NEWER)
+
+        assert result.errors == 0
+        assert result.overwritten_files == 1
+        assert (target / "file1.txt").read_text() == "BACKUP CONTENT"
+
+    def test_conflict_rename_keeps_both_files(self, conflict_setup: tuple) -> None:
+        """RENAME must preserve the local file and write the restored copy beside it."""
+        backup_base, target = conflict_setup
+
+        engine = RestoreEngine(backup_path=backup_base, target_path=target)
+        result = engine.restore(conflict=ConflictResolution.RENAME)
+
+        assert result.errors == 0
+        assert result.restored_files == 1
+        assert (target / "file1.txt").read_text() == "LOCAL CONTENT"
+
+        renamed = list(target.glob("file1.restored-*.txt"))
+        assert len(renamed) == 1, f"expected one renamed copy, got {renamed}"
+        assert renamed[0].read_text() == "BACKUP CONTENT"
+        assert any("Renamed" in message for _, _, message in result.file_actions)
+
+    def test_conflict_rename_is_collision_safe(self, conflict_setup: tuple) -> None:
+        """Restoring twice in the same second must not clobber the first renamed copy."""
+        backup_base, target = conflict_setup
+        engine = RestoreEngine(backup_path=backup_base, target_path=target)
+
+        engine.restore(conflict=ConflictResolution.RENAME)
+        engine.restore(conflict=ConflictResolution.RENAME)
+
+        renamed = sorted(target.glob("file1.restored-*.txt"))
+        assert len(renamed) == 2, f"expected two renamed copies, got {renamed}"
+        assert all(p.read_text() == "BACKUP CONTENT" for p in renamed)
+        assert (target / "file1.txt").read_text() == "LOCAL CONTENT"
+
+    def test_conflict_rename_dry_run_writes_nothing(self, conflict_setup: tuple) -> None:
+        """Dry-run RENAME reports the copy without touching the disk."""
+        backup_base, target = conflict_setup
+
+        engine = RestoreEngine(backup_path=backup_base, target_path=target)
+        result = engine.restore(conflict=ConflictResolution.RENAME, dry_run=True)
+
+        assert result.errors == 0
+        assert result.restored_files == 1
+        assert not list(target.glob("file1.restored-*"))
+        assert (target / "file1.txt").read_text() == "LOCAL CONTENT"
+
+    def test_default_skip_is_unchanged(self, conflict_setup: tuple) -> None:
+        """Control: omitting the new parameter keeps the historical SKIP default."""
+        backup_base, target = conflict_setup
+
+        engine = RestoreEngine(backup_path=backup_base, target_path=target)
+        result = engine.restore()
+
+        assert result.errors == 0
+        assert result.skipped_files == 1
+        assert (target / "file1.txt").read_text() == "LOCAL CONTENT"
+
+    def test_overwrite_flag_is_unchanged(self, conflict_setup: tuple) -> None:
+        """Control: the legacy --overwrite path still overwrites."""
+        backup_base, target = conflict_setup
+
+        engine = RestoreEngine(backup_path=backup_base, target_path=target)
+        result = engine.restore(overwrite=True)
+
+        assert result.errors == 0
+        assert result.overwritten_files == 1
+        assert (target / "file1.txt").read_text() == "BACKUP CONTENT"

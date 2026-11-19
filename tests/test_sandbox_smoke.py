@@ -97,7 +97,7 @@ class TestCliSurfaceSmoke:
 
         version = _cli(["--version"], env)
         _assert_ok(version)
-        assert "0.6.3" in version.stdout
+        assert "0.7.0" in version.stdout
 
         help_out = _cli(["--help"], env)
         _assert_ok(help_out)
@@ -256,3 +256,65 @@ class TestValidationFailureSmoke:
         _assert_ok(proc)
         assert "Backup completed successfully!" in proc.stdout
         assert (target / "Documents-Backup" / DEVICE / "file1.txt").read_text() == "keep me"
+
+
+class TestRestoreConflictSmoke:
+    """F3: the new --conflict flag works at the process boundary."""
+
+    def test_conflict_rename_keeps_both_files(self, tmp_path: Path):
+        env = _sandbox_env(tmp_path)
+        backup_folder = tmp_path / "backup" / "Documents-Backup"
+        backup_folder.mkdir(parents=True)
+        (backup_folder / "file1.txt").write_text("BACKUP CONTENT")
+
+        target = tmp_path / "restored"
+        target.mkdir()
+        (target / "file1.txt").write_text("LOCAL CONTENT")
+
+        proc = _cli(
+            [
+                "restore",
+                "--source",
+                str(tmp_path / "backup"),
+                "--target",
+                str(target),
+                "--conflict",
+                "rename",
+            ],
+            env,
+        )
+
+        _assert_ok(proc)
+        assert (target / "file1.txt").read_text() == "LOCAL CONTENT"
+        renamed = list(target.glob("file1.restored-*.txt"))
+        assert len(renamed) == 1, f"expected one renamed copy, got {renamed}"
+        assert renamed[0].read_text() == "BACKUP CONTENT"
+
+    def test_unknown_conflict_value_exits_nonzero(self, tmp_path: Path):
+        env = _sandbox_env(tmp_path)
+        backup_folder = tmp_path / "backup" / "Documents-Backup"
+        backup_folder.mkdir(parents=True)
+        (backup_folder / "file1.txt").write_text("BACKUP CONTENT")
+
+        target = tmp_path / "restored"
+        target.mkdir()
+
+        proc = _cli(
+            [
+                "restore",
+                "--source",
+                str(tmp_path / "backup"),
+                "--target",
+                str(target),
+                "--conflict",
+                "bogus",
+            ],
+            env,
+        )
+
+        assert proc.returncode == 1, (
+            f"expected exit 1, got {proc.returncode}\n"
+            f"--- stdout ---\n{proc.stdout}\n"
+            f"--- stderr ---\n{proc.stderr}"
+        )
+        assert "Invalid --conflict value" in proc.stdout
