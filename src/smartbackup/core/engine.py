@@ -57,6 +57,11 @@ class BackupEngine:
         try:
             # 1. Validate paths
             if not self._validate_paths():
+                # A failed validation is a real error. Without this, errors
+                # stays 0, SmartBackup.run() returns True, the CLI exits 0 and
+                # the completion handler reports success although nothing was
+                # copied (F11).
+                self.result.errors += 1
                 return self.result
 
             # 2. Initialize components
@@ -184,9 +189,15 @@ class BackupEngine:
         finally:
             self.result.end_time = datetime.now()
 
-            # Write log file
+            # Write log file. Logging is best-effort: a vanished or unwritable
+            # medium must not turn a handled failure into an uncaught
+            # exception (the CLI would lose the summary), nor may it recreate
+            # a target directory that failed validation.
             if self.config.log_to_file:
-                self._write_log_file()
+                try:
+                    self._write_log_file()
+                except OSError as e:
+                    self.logger.warning(f"Could not write log file: {e}")
 
         return self.result
 
@@ -384,6 +395,14 @@ class BackupEngine:
 
     def _write_log_file(self) -> None:
         """Writes detailed log to the backup medium."""
+        if not self.config.backup_path.exists():
+            # Never create the medium: if it is missing, path validation has
+            # already failed and there is nowhere legitimate to write.
+            self.logger.warning(
+                f"Log file skipped: backup medium not available ({self.config.backup_path})"
+            )
+            return
+
         if self._backup_target is None:
             log_dir = self.config.backup_path / self.config.backup_folder_name / "_backup_logs"
         else:
