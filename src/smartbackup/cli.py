@@ -18,14 +18,14 @@ from rich.table import Table
 from smartbackup.backup import SmartBackup
 from smartbackup.config import ConfigManager
 from smartbackup.manifest.json_manifest import JsonManifestManager
-from smartbackup.platform.identity import get_device_name
+from smartbackup.platform.identity import get_device_name, sanitize_device_name
 from smartbackup.platform.resolver import PathResolver
 from smartbackup.platform.scheduler import SchedulerHelper
 from smartbackup.platform.terminal import TerminalSpawner
 from smartbackup.platform.watcher import DeviceWatcher
 from smartbackup.ui.logger import BackupLogger
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 
 console = Console(highlight=False)
 
@@ -45,6 +45,15 @@ daemon_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(daemon_app, name="daemon")
+
+config_app = typer.Typer(
+    name="config",
+    help="Inspect and update the persistent SmartBackup configuration",
+    add_completion=False,
+    rich_markup_mode="rich",
+    no_args_is_help=True,
+)
+app.add_typer(config_app, name="config")
 
 
 # ---------------------------------------------------------------------------
@@ -496,14 +505,27 @@ def _handle_compress(
 @app.command("watch", help="Watch for external backup storage media and trigger prompts")
 def watch_cmd(
     interval: float = typer.Option(2.5, "-i", "--interval", help="Polling interval in seconds"),
-    cooldown: int = typer.Option(300, "-c", "--cooldown", help="Cooldown in seconds between drive prompts"),
+    cooldown: Optional[int] = typer.Option(
+        None,
+        "-c",
+        "--cooldown",
+        help="Cooldown in seconds between drive prompts "
+        "(default: auto_watch_cooldown config, else 300)",
+    ),
 ) -> None:
     """Run foreground drive watcher daemon."""
     _handle_watch(interval=interval, cooldown=cooldown)
 
 
-def _handle_watch(interval: float = 2.5, cooldown: int = 300) -> None:
+def _handle_watch(interval: float = 2.5, cooldown: Optional[int] = None) -> None:
     """Foreground drive watcher logic."""
+    if cooldown is None:
+        try:
+            cooldown = ConfigManager().get_auto_watch_cooldown()
+        except (TypeError, ValueError):
+            # Hand-edited config: fall back to the historical default.
+            cooldown = 300
+
     console.print(
         Panel(
             f"[bold green]SmartBackup Drive Watcher Active[/bold green]\n\n"
@@ -877,6 +899,171 @@ def backup_cmd(
         if prompt:
             time.sleep(5)
         raise typer.Exit(code=1) from e
+
+
+# ---------------------------------------------------------------------------
+# Config sub-command group
+# ---------------------------------------------------------------------------
+
+_CONFIG_KEYS = (
+    "preferred_target",
+    "device_name",
+    "auto_watch_cooldown",
+    "preferred_terminal",
+    "exclusions",
+)
+
+
+def _reject_unknown_config_key(key: str) -> None:
+    console.print(
+        f"[red]Unknown config key:[/red] {key}\n"
+        f"[dim]Valid keys:[/dim] {', '.join(_CONFIG_KEYS)}"
+    )
+    raise typer.Exit(code=1)
+
+
+@config_app.command("list")
+def config_list_cmd() -> None:
+    """Show the effective persistent configuration."""
+    manager = ConfigManager()
+    config = manager.load()
+
+    table = Table(
+        title="SMARTBACKUP CONFIGURATION",
+        title_style="bold cyan",
+        show_header=True,
+        expand=False,
+        border_style="cyan",
+        padding=(0, 2),
+    )
+    table.add_column("Key", style="bold")
+    table.add_column("Value")
+
+    for key in _CONFIG_KEYS[:-1]:
+        value = config.get(key)
+        table.add_row(key, "(not set)" if value is None else str(value))
+
+    exclusions = config.get("exclusions", [])
+    table.add_row("exclusions", ", ".join(sorted(exclusions)) if exclusions else "(none)")
+
+    console.print()
+    console.print(table)
+    console.print(f"[dim]Config file:[/dim] {manager.config_file}")
+    raise typer.Exit(code=0)
+
+
+@config_app.command("get")
+def config_get_cmd(
+    key: str = typer.Argument(..., help="Configuration key"),
+) -> None:
+    """Print one configuration value."""
+    if key not in _CONFIG_KEYS:
+        _reject_unknown_config_key(key)
+
+    config = ConfigManager().load()
+
+    if key == "exclusions":
+        patterns = sorted(config.get("exclusions", []))
+        console.print(", ".join(patterns) if patterns else "(none)")
+        raise typer.Exit(code=0)
+
+    value = config.get(key)
+    console.print("(not set)" if value is None else str(value))
+    raise typer.Exit(code=0)
+
+
+@config_app.command("set")
+def config_set_cmd(
+    key: str = typer.Argument(..., help="Configuration key"),
+    value: str = typer.Argument(..., help="New value"),
+) -> None:
+    """Validate and persist one configuration value."""
+    if key not in _CONFIG_KEYS:
+        _reject_unknown_config_key(key)
+
+    if key == "exclusions":
+        console.print(
+            "[red]Use `smartbackup config exclude|unexclude <pattern>` "
+            "to manage exclusions.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    manager = ConfigManager()
+
+    if key == "auto_watch_cooldown":
+        try:
+            seconds = int(value)
+        except ValueError:
+            seconds = -1
+        if seconds < 0:
+            console.print(
+                f"[red]Invalid value:[/red] {value!r} (expected an integer >= 0)"
+            )
+            raise typer.Exit(code=1)
+        manager.set_auto_watch_cooldown(seconds)
+        stored = str(seconds)
+    elif key == "device_name":
+        sanitized = sanitize_device_name(value)
+        if sanitized == "unknown-device":
+            console.print(
+                "[red]Invalid value:[/red] device_name must contain at least "
+                "one letter or digit"
+            )
+            raise typer.Exit(code=1)
+        manager.set_device_name(sanitized)
+        stored = sanitized
+    else:  # preferred_target / preferred_terminal
+        cleaned = value.strip()
+        if not cleaned:
+            console.print(f"[red]Invalid value:[/red] {key} must not be empty")
+            raise typer.Exit(code=1)
+        if key == "preferred_target":
+            manager.set_preferred_target(cleaned)
+        else:
+            manager.set_preferred_terminal(cleaned)
+        stored = cleaned
+
+    console.print(f"[green]Set[/green] {key} = {stored}")
+    console.print(f"[dim]Config file:[/dim] {manager.config_file}")
+    raise typer.Exit(code=0)
+
+
+@config_app.command("unset")
+def config_unset_cmd(
+    key: str = typer.Argument(..., help="Configuration key"),
+) -> None:
+    """Remove a configuration key so its default applies again."""
+    if key not in _CONFIG_KEYS:
+        _reject_unknown_config_key(key)
+
+    manager = ConfigManager()
+    manager.unset(key)
+    console.print(f"[green]Unset[/green] {key}")
+    raise typer.Exit(code=0)
+
+
+@config_app.command("exclude")
+def config_exclude_cmd(
+    patterns: list[str] = typer.Argument(..., help="Glob patterns to add"),
+) -> None:
+    """Add one or more custom exclusion patterns."""
+    manager = ConfigManager()
+    for pattern in patterns:
+        manager.add_exclusion(pattern)
+    console.print(f"[green]Added {len(patterns)} exclusion(s).[/green]")
+    raise typer.Exit(code=0)
+
+
+@config_app.command("unexclude")
+def config_unexclude_cmd(
+    patterns: list[str] = typer.Argument(..., help="Glob patterns to remove"),
+) -> None:
+    """Remove one or more custom exclusion patterns."""
+    manager = ConfigManager()
+    for pattern in patterns:
+        manager.remove_exclusion(pattern)
+    console.print(f"[green]Removed {len(patterns)} exclusion(s).[/green]")
+    raise typer.Exit(code=0)
 
 
 # ---------------------------------------------------------------------------

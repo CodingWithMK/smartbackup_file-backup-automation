@@ -9,6 +9,16 @@ import platform
 import re
 
 
+def sanitize_device_name(name: str) -> str:
+    """Sanitize an arbitrary string for safe use as a device folder name."""
+    sanitized = re.sub(r"[^\w\-]", "-", name)
+
+    # Collapse runs of hyphens, strip leading/trailing
+    sanitized = re.sub(r"-+", "-", sanitized).strip("-")
+
+    return sanitized or "unknown-device"
+
+
 def get_device_name() -> str:
     """
     Get a filesystem-safe identifier for the current device.
@@ -27,10 +37,4 @@ def get_device_name() -> str:
     # Corporate machines may have FQDNs (e.g., "server_01.corp.net").
     hostname = hostname.split(".")[0]
 
-    # Replace non-alphanumeric/non-hyphen/non-underscore chars with hyphens
-    sanitized = re.sub(r"[^\w\-]", "-", hostname)
-
-    # Collapse runs of hyphens, strip leading/trailing
-    sanitized = re.sub(r"-+", "-", sanitized).strip("-")
-
-    return sanitized or "unknown-device"
+    return sanitize_device_name(hostname)

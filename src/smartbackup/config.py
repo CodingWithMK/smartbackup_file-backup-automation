@@ -182,6 +182,20 @@ class ConfigManager:
         config["exclusions"] = list(exclusions)
         self.save(config)
 
+    def remove_exclusion(self, pattern: str) -> None:
+        """Removes an exclusion pattern (no-op when it is absent)."""
+        config = self.load()
+        exclusions = set(config.get("exclusions", []))
+        exclusions.discard(pattern)
+        config["exclusions"] = list(exclusions)
+        self.save(config)
+
+    def unset(self, key: str) -> None:
+        """Removes a configuration key so its default applies again."""
+        config = self.load()
+        config.pop(key, None)
+        self.save(config)
+
     def set_preferred_target(self, label: str) -> None:
         """Saves preferred target medium."""
         config = self.load()
