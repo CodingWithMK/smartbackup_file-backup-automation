@@ -116,14 +116,18 @@ class RestoreEngine:
         overwrite: bool = False,
         dry_run: bool = False,
         max_workers: int = 4,
+        conflict: Optional[ConflictResolution] = None,
     ) -> RestoreResult:
         """
         Perform the restore operation.
 
         Args:
             patterns: Optional glob patterns to filter files
-            overwrite: Whether to overwrite existing files
+            overwrite: Whether to overwrite existing files (legacy flag)
             dry_run: Preview without actual restore
+            conflict: Explicit conflict strategy. When omitted, the legacy
+                `overwrite` boolean is mapped to OVERWRITE/SKIP so existing
+                callers keep their behavior.
 
         Returns:
             RestoreResult with statistics
@@ -166,7 +170,9 @@ class RestoreEngine:
             self.logger.section("Starting restore operation...")
 
             conflict_resolution = (
-                ConflictResolution.OVERWRITE if overwrite else ConflictResolution.SKIP
+                conflict
+                if conflict is not None
+                else (ConflictResolution.OVERWRITE if overwrite else ConflictResolution.SKIP)
             )
 
             self._restore_files(files_to_restore, conflict_resolution, dry_run, max_workers)
@@ -282,6 +288,7 @@ class RestoreEngine:
             target = target_path / relative
 
             # Check for existing file
+            renamed = False
             if target.exists():
                 if conflict_resolution == ConflictResolution.SKIP:
                     return True, FileAction.SKIPPED, "File exists"
@@ -290,8 +297,13 @@ class RestoreEngine:
                     target_mtime = target.stat().st_mtime
                     if source_mtime <= target_mtime:
                         return True, FileAction.SKIPPED, "Target is newer"
+                elif conflict_resolution == ConflictResolution.RENAME:
+                    target = self._unique_restore_path(target)
+                    renamed = True
 
             if dry_run:
+                if renamed:
+                    return True, FileAction.COPIED, f"DRY-RUN (rename → {target.name})"
                 if target.exists():
                     return True, FileAction.UPDATED, "DRY-RUN"
                 return True, FileAction.COPIED, "DRY-RUN"
@@ -311,7 +323,8 @@ class RestoreEngine:
                 temp_path.unlink(missing_ok=True)
                 raise
 
-            return True, action, "OK"
+            message = f"Renamed → {target.name}" if renamed else "OK"
+            return True, action, message
 
         except PermissionError:
             return False, FileAction.ERROR, "Permission denied"
@@ -319,6 +332,17 @@ class RestoreEngine:
             return False, FileAction.ERROR, f"OS error: {e.errno}"
         except Exception as e:
             return False, FileAction.ERROR, str(e)
+
+    @staticmethod
+    def _unique_restore_path(target: Path) -> Path:
+        """Return a collision-safe ``<stem>.restored-<timestamp>`` sibling path."""
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        candidate = target.with_stem(f"{target.stem}.restored-{timestamp}")
+        counter = 1
+        while candidate.exists():
+            candidate = target.with_stem(f"{target.stem}.restored-{timestamp}-{counter}")
+            counter += 1
+        return candidate
 
     def _print_summary(self) -> None:
         """Print restore summary using Rich table."""

@@ -25,7 +25,7 @@ from smartbackup.platform.terminal import TerminalSpawner
 from smartbackup.platform.watcher import DeviceWatcher
 from smartbackup.ui.logger import BackupLogger
 
-__version__ = "0.6.3"
+__version__ = "0.7.0"
 
 console = Console(highlight=False)
 
@@ -254,6 +254,11 @@ def restore_cmd(
         None, "-p", "--pattern", help="Glob patterns to filter files"
     ),
     overwrite: bool = typer.Option(False, "--overwrite", help="Overwrite existing files"),
+    conflict: Optional[str] = typer.Option(
+        None,
+        "--conflict",
+        help="Conflict resolution: skip, overwrite, newer, rename",
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview restore without copying"),
     list_files: bool = typer.Option(False, "--list", help="List files in backup"),
     device_name: Optional[str] = typer.Option(
@@ -268,6 +273,7 @@ def restore_cmd(
         target=target,
         pattern=pattern,
         overwrite=overwrite,
+        conflict=conflict,
         dry_run=dry_run,
         list_files=list_files,
         device_name=device_name,
@@ -279,6 +285,7 @@ def _handle_restore(
     target: Optional[Path],
     pattern: Optional[list[str]],
     overwrite: bool,
+    conflict: Optional[str],
     dry_run: bool,
     list_files: bool,
     device_name: Optional[str],
@@ -287,11 +294,28 @@ def _handle_restore(
     logger = BackupLogger(verbose=True)
 
     try:
-        from smartbackup.core.restore import RestoreEngine
+        from smartbackup.core.restore import ConflictResolution, RestoreEngine
     except ImportError:
         logger.error("Restore functionality not yet available")
         logger.info("This feature will be implemented in the next version")
         raise typer.Exit(code=1) from None
+
+    conflict_map = {
+        "skip": ConflictResolution.SKIP,
+        "overwrite": ConflictResolution.OVERWRITE,
+        "newer": ConflictResolution.NEWER,
+        "rename": ConflictResolution.RENAME,
+    }
+    conflict_resolution = None
+    if conflict is not None:
+        key = conflict.strip().lower()
+        if key not in conflict_map:
+            logger.error(
+                f"Invalid --conflict value: {conflict}. "
+                "Choose from: skip, overwrite, newer, rename"
+            )
+            raise typer.Exit(code=1)
+        conflict_resolution = conflict_map[key]
 
     if list_files:
         # List files in backup
@@ -332,6 +356,7 @@ def _handle_restore(
             patterns=pattern,
             overwrite=overwrite,
             dry_run=dry_run,
+            conflict=conflict_resolution,
         )
 
         code = 0 if result.errors == 0 else 1
