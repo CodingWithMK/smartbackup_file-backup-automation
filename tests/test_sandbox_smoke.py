@@ -97,7 +97,7 @@ class TestCliSurfaceSmoke:
 
         version = _cli(["--version"], env)
         _assert_ok(version)
-        assert "0.6.2" in version.stdout
+        assert "0.6.3" in version.stdout
 
         help_out = _cli(["--help"], env)
         _assert_ok(help_out)
@@ -194,3 +194,65 @@ class TestExcludePersistenceSmoke:
         _assert_ok(run())
         assert not (backup_root / "image.iso").exists()
         assert (backup_root / "file1.txt").exists()
+
+
+class TestValidationFailureSmoke:
+    """F11: failed path validation must never look like a successful backup."""
+
+    @pytest.mark.parametrize("extra", [[], ["--dry-run"]])
+    def test_missing_target_exits_nonzero_and_creates_nothing(
+        self, tmp_path: Path, extra: list
+    ):
+        env = _sandbox_env(tmp_path)
+        src = tmp_path / "source"
+        src.mkdir()
+        (src / "file1.txt").write_text("keep me")
+        target = tmp_path / "missing-target"
+
+        proc = _cli(
+            [
+                "--source",
+                str(src),
+                "--target",
+                str(target),
+                "--device-name",
+                DEVICE,
+                *extra,
+            ],
+            env,
+        )
+
+        assert proc.returncode == 1, (
+            f"expected exit 1, got {proc.returncode}\n"
+            f"--- stdout ---\n{proc.stdout}\n"
+            f"--- stderr ---\n{proc.stderr}"
+        )
+        assert "Backup medium not found" in proc.stdout
+        assert "Backup completed with errors!" in proc.stdout
+        assert "Backup completed successfully!" not in proc.stdout
+        assert not target.exists(), "failed validation recreated the missing target"
+
+    def test_valid_target_still_exits_zero(self, tmp_path: Path):
+        """Control: the sandbox itself must not force a non-zero exit."""
+        env = _sandbox_env(tmp_path)
+        src = tmp_path / "source"
+        src.mkdir()
+        (src / "file1.txt").write_text("keep me")
+        target = tmp_path / "target"
+        target.mkdir()
+
+        proc = _cli(
+            [
+                "--source",
+                str(src),
+                "--target",
+                str(target),
+                "--device-name",
+                DEVICE,
+            ],
+            env,
+        )
+
+        _assert_ok(proc)
+        assert "Backup completed successfully!" in proc.stdout
+        assert (target / "Documents-Backup" / DEVICE / "file1.txt").read_text() == "keep me"
