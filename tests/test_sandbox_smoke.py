@@ -97,7 +97,7 @@ class TestCliSurfaceSmoke:
 
         version = _cli(["--version"], env)
         _assert_ok(version)
-        assert "0.7.0" in version.stdout
+        assert "0.7.1" in version.stdout
 
         help_out = _cli(["--help"], env)
         _assert_ok(help_out)
@@ -318,3 +318,46 @@ class TestRestoreConflictSmoke:
             f"--- stderr ---\n{proc.stderr}"
         )
         assert "Invalid --conflict value" in proc.stdout
+
+
+class TestConfigCliSmoke:
+    """F4: the config group works at the process boundary with a sandbox HOME."""
+
+    def test_set_get_unset_roundtrip(self, tmp_path: Path):
+        env = _sandbox_env(tmp_path)
+        config_file = _config_file(tmp_path)
+
+        _assert_ok(_cli(["config", "set", "auto_watch_cooldown", "42"], env))
+        assert json.loads(config_file.read_text(encoding="utf-8"))["auto_watch_cooldown"] == 42
+
+        got = _cli(["config", "get", "auto_watch_cooldown"], env)
+        _assert_ok(got)
+        assert "42" in got.stdout
+
+        _assert_ok(_cli(["config", "unset", "auto_watch_cooldown"], env))
+        assert "auto_watch_cooldown" not in json.loads(
+            config_file.read_text(encoding="utf-8")
+        )
+
+    def test_invalid_value_exits_nonzero(self, tmp_path: Path):
+        env = _sandbox_env(tmp_path)
+
+        proc = _cli(["config", "set", "auto_watch_cooldown", "nope"], env)
+
+        assert proc.returncode == 1, (
+            f"expected exit 1, got {proc.returncode}\n"
+            f"--- stdout ---\n{proc.stdout}\n"
+            f"--- stderr ---\n{proc.stderr}"
+        )
+        assert "Invalid value" in proc.stdout
+
+    def test_exclude_and_unexclude_roundtrip(self, tmp_path: Path):
+        env = _sandbox_env(tmp_path)
+        config_file = _config_file(tmp_path)
+
+        _assert_ok(_cli(["config", "exclude", "*.iso"], env))
+        assert "*.iso" in json.loads(config_file.read_text(encoding="utf-8"))["exclusions"]
+
+        _assert_ok(_cli(["config", "unexclude", "*.iso"], env))
+        stored = json.loads(config_file.read_text(encoding="utf-8")).get("exclusions", [])
+        assert "*.iso" not in stored

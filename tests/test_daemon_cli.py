@@ -2,14 +2,23 @@
 Tests for CLI daemon and watch commands, and interactive --prompt option.
 """
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from smartbackup.cli import app
+from smartbackup.config import ConfigManager
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_config(tmp_path: Path, monkeypatch):
+    """Keep every test off the developer's real config.json."""
+    monkeypatch.setattr(ConfigManager, "_get_config_dir", lambda self: tmp_path / "cfg")
 
 
 class TestDaemonCLI:
@@ -28,6 +37,73 @@ class TestDaemonCLI:
             result = runner.invoke(app, ["watch"])
             assert result.exit_code == 0
             assert "Watcher stopped by user" in result.output
+
+
+class TestWatchCooldownResolution:
+    """F5: --cooldown resolves flag > config > 300 instead of a hard-coded 300."""
+
+    @staticmethod
+    def _capture(monkeypatch) -> dict:
+        captured: dict = {}
+
+        class FakeWatcher:
+            def __init__(self, interval, cooldown, on_drive_detected):
+                captured["interval"] = interval
+                captured["cooldown"] = cooldown
+
+            def start(self, blocking=True):
+                pass
+
+            def stop(self):
+                pass
+
+        class FakeSpawner:
+            def spawn_prompt(self, *args, **kwargs):
+                pass
+
+        monkeypatch.setattr("smartbackup.cli.DeviceWatcher", FakeWatcher)
+        monkeypatch.setattr("smartbackup.cli.TerminalSpawner", FakeSpawner)
+        return captured
+
+    def test_watch_uses_configured_cooldown(self, monkeypatch):
+        ConfigManager().set_auto_watch_cooldown(42)
+        captured = self._capture(monkeypatch)
+
+        result = runner.invoke(app, ["watch"])
+
+        assert result.exit_code == 0
+        assert captured["cooldown"] == 42
+        assert "42s" in result.output
+
+    def test_watch_flag_overrides_configured_cooldown(self, monkeypatch):
+        ConfigManager().set_auto_watch_cooldown(42)
+        captured = self._capture(monkeypatch)
+
+        result = runner.invoke(app, ["watch", "--cooldown", "7"])
+
+        assert result.exit_code == 0
+        assert captured["cooldown"] == 7
+
+    def test_watch_defaults_to_300_without_config(self, monkeypatch):
+        captured = self._capture(monkeypatch)
+
+        result = runner.invoke(app, ["watch"])
+
+        assert result.exit_code == 0
+        assert captured["cooldown"] == 300
+
+    def test_watch_corrupt_config_falls_back_to_300(self, monkeypatch, tmp_path):
+        config_dir = tmp_path / "cfg"
+        config_dir.mkdir()
+        (config_dir / "config.json").write_text(
+            json.dumps({"auto_watch_cooldown": "not-a-number"}), encoding="utf-8"
+        )
+        captured = self._capture(monkeypatch)
+
+        result = runner.invoke(app, ["watch"])
+
+        assert result.exit_code == 0
+        assert captured["cooldown"] == 300
 
     def test_daemon_install_command_success(self):
         """Ensure 'smartbackup daemon install' registers the service and reports success."""
