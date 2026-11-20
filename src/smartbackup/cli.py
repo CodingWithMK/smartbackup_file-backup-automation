@@ -25,7 +25,7 @@ from smartbackup.platform.terminal import TerminalSpawner
 from smartbackup.platform.watcher import DeviceWatcher
 from smartbackup.ui.logger import BackupLogger
 
-__version__ = "0.7.1"
+__version__ = "0.7.2"
 
 console = Console(highlight=False)
 
@@ -270,6 +270,9 @@ def restore_cmd(
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview restore without copying"),
     list_files: bool = typer.Option(False, "--list", help="List files in backup"),
+    manifest_info: bool = typer.Option(
+        False, "--manifest-info", help="Show backup manifest summary"
+    ),
     device_name: Optional[str] = typer.Option(
         None,
         "--device-name",
@@ -285,6 +288,7 @@ def restore_cmd(
         conflict=conflict,
         dry_run=dry_run,
         list_files=list_files,
+        manifest_info=manifest_info,
         device_name=device_name,
     )
 
@@ -298,6 +302,7 @@ def _handle_restore(
     dry_run: bool,
     list_files: bool,
     device_name: Optional[str],
+    manifest_info: bool = False,
 ) -> int:
     """Handle the restore subcommand (core logic)."""
     logger = BackupLogger(verbose=True)
@@ -326,38 +331,57 @@ def _handle_restore(
             raise typer.Exit(code=1)
         conflict_resolution = conflict_map[key]
 
-    if list_files:
-        # List files in backup
-        logger.header("Files in Backup")
-        root = source / "Documents-Backup"
-        if not root.exists():
-            logger.error(f"Backup directory not found: {root}")
+    resolved_device = device_name or ""
+    restore_engine = RestoreEngine(
+        backup_path=source,
+        target_path=target,
+        logger=logger,
+        device_name=resolved_device,
+    )
+
+    if manifest_info:
+        if not restore_engine.backup_target.exists():
+            logger.error(f"Backup directory not found: {restore_engine.backup_target}")
             raise typer.Exit(code=1)
+        info = restore_engine.get_manifest_info()
+        if info is None:
+            logger.warning("No manifest found in backup.")
+            raise typer.Exit(code=1)
+        table = Table(
+            title="BACKUP MANIFEST INFO",
+            title_style="bold cyan",
+            border_style="cyan",
+            show_header=False,
+            expand=False,
+        )
+        table.add_column("Field", style="bold")
+        table.add_column("Value")
+        table.add_row("Source", str(info["source"]))
+        table.add_row("Created", str(info["created"]))
+        table.add_row("Updated", str(info["updated"]))
+        table.add_row("Backup Count", str(info["backup_count"]))
+        table.add_row("Total Files", f"{info['total_files']:,}")
+        table.add_row("Total Size", f"{info['total_size']:,} bytes")
+        console.print()
+        console.print(table)
+        console.print()
+        raise typer.Exit(code=0)
 
-        resolved_target = _resolve_device_target(root, device_name)
-
-        manager = JsonManifestManager(resolved_target)
-        manifest = manager.load()
-        if manifest is None:
-            logger.warning("No manifest found, scanning directory...")
-            for path in resolved_target.rglob("*"):
-                if path.is_file():
-                    console.print(f"  {path.relative_to(resolved_target)}")
+    if list_files:
+        logger.header("Files in Backup")
+        if not restore_engine.backup_target.exists():
+            logger.error(f"Backup directory not found: {restore_engine.backup_target}")
+            raise typer.Exit(code=1)
+        files = restore_engine.list_files(patterns=pattern)
+        if not files:
+            logger.warning("No matching files found in backup.")
         else:
-            for entry in manifest.iter_entries():
-                console.print(f"  {entry.relative_path} ({entry.size:,} bytes)")
+            for rel_path, size in files:
+                console.print(f"  {rel_path} ({size:,} bytes)")
         raise typer.Exit(code=0)
 
     # Perform restore
-    resolved_device = device_name or ""
     try:
-        restore_engine = RestoreEngine(
-            backup_path=source,
-            target_path=target,
-            logger=logger,
-            device_name=resolved_device,
-        )
-
         if dry_run:
             logger.warning("DRY-RUN MODE - No files will be restored!")
 
@@ -638,6 +662,35 @@ def daemon_status_cmd() -> None:
     console.print()
     console.print(table)
     console.print()
+    raise typer.Exit(code=0)
+
+
+@daemon_app.command("clear-state", help="Clear watcher debounce state (watcher_state.json)")
+def daemon_clear_state_cmd() -> None:
+    """Reset the watcher debounce lock so drives can prompt immediately."""
+    from smartbackup.platform.watcher import DebounceLock
+
+    lock = DebounceLock()
+    lock.clear()
+    console.print(
+        Panel(
+            f"[bold green]Success:[/bold green] Cleared watcher debounce state ({lock.state_file}).",
+            title="[bold cyan]Daemon State Cleared[/bold cyan]",
+            border_style="green",
+            expand=False,
+        )
+    )
+    raise typer.Exit(code=0)
+
+
+@app.command("schedule", help="Show instructions to schedule periodic backups")
+def schedule_cmd(
+    hours: int = typer.Option(
+        24, "--hours", "-H", min=1, help="Backup interval in hours"
+    ),
+) -> None:
+    """Display OS-specific instructions for scheduling periodic backups."""
+    SchedulerHelper.setup_scheduled_backup(interval_hours=hours)
     raise typer.Exit(code=0)
 
 
