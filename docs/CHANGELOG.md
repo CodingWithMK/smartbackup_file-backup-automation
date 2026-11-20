@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-11-20
+
+### Added
+- **`smartbackup schedule [--hours N]` (F6)**: exposes `SchedulerHelper.setup_scheduled_backup()`
+  via the CLI and updates the OS scheduler recipes (Windows `schtasks`, macOS `launchd`,
+  Linux `cron` / `systemd`) to emit runnable `-m smartbackup` invocations.
+- **`smartbackup restore --manifest-info` (F7)**: surfaces `RestoreEngine.get_manifest_info()`
+  as a formatted summary table.
+- **`smartbackup daemon clear-state` (F9)**: exposes `DebounceLock.clear()` so users can
+  clear `watcher_state.json` without deleting it by hand.
+
+### Changed
+- **`smartbackup restore --list` (F7)**: now delegates to `RestoreEngine.list_files(patterns=...)`
+  instead of duplicating manifest/directory traversal in the CLI, and honors `-p/--pattern`.
+- **Unified target writability probe (F8)**: `BackupEngine._validate_paths()` now delegates to
+  `DeviceDetector.validate_device()`, removing duplicate write-test code.
+
 ## [0.7.1] - 2026-11-19
 
 ### Added

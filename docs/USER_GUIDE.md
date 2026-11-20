@@ -1,6 +1,6 @@
 # SmartBackup User Guide
 
-**Version tested against: `smartbackup 0.7.1`** · Platforms: Windows · macOS · Linux · Python 3.9+
+**Version tested against: `smartbackup 0.7.2`** · Platforms: Windows · macOS · Linux · Python 3.9+
 
 This guide is the single source of truth for using SmartBackup. Every command, flag, default
 value, file path, and behavior documented here was taken from (or verified against) the
@@ -105,7 +105,7 @@ uv pip install -e ".[dev]"
 
 ```bash
 smartbackup --version
-# smartbackup 0.7.1
+# smartbackup 0.7.2
 
 smartbackup --help          # full option list (shown for every command/subcommand too)
 ```
@@ -316,7 +316,7 @@ Every command supports `--help` (`smartbackup restore --help`, …).
 | `--compress` | | FORMAT | — | Compress the backup after copying: `zip` or `tar.gz` |
 | `--hash` | | | off | SHA-256 change detection for files **up to 50 MB** |
 | `--hash-all` | | | off | SHA-256 for **all** files regardless of size (implies `--hash`; slower) |
-| `--version` | `-v` | | — | Print `smartbackup 0.7.1` and exit |
+| `--version` | `-v` | | — | Print `smartbackup 0.7.2` and exit |
 | `--help` | `-h` | | — | Show help and exit |
 
 ### 4.2 Everyday recipes
@@ -588,10 +588,9 @@ Notes:
 
 ### 5.5 Scheduling periodic backups with your OS
 
-The codebase ships recipe printing for OS-level scheduling
-(`SchedulerHelper.setup_scheduled_backup()`), but **it is not exposed as a CLI command yet**.
-Until it is (see the fix plan), set up scheduling yourself using your OS tooling and the
-`smartbackup` entry point:
+Run `smartbackup schedule [--hours N]` (default: 24 hours) to print OS-specific setup
+instructions for Windows Task Scheduler, macOS `launchd`, or Linux `cron`/`systemd`.
+You can also set up scheduling manually using the `smartbackup` entry point:
 
 **Windows (Task Scheduler, run in an *Administrator* prompt):**
 
@@ -937,7 +936,7 @@ owned by root — `chown`/`mount` it read-write or pick another target.
 | Backup reported success although the target was missing | SmartBackup **≤ 0.6.2** did not count path-validation failures as errors | Fixed in 0.6.3 — update; the CLI now exits `1` and the summary shows `Errors: 1` |
 | Backup went to an unexpected disk | Multiple candidate drives, auto-pick took the first | Pin with `--target` or `--label` / `preferred_target` |
 | `Please specify backup directory with --target` | `--list-devices`, `--show-manifest`, or `--verify` without `--target` | Add `--target <drive root>` |
-| Watcher runs but **never prompts** | Drive doesn't match §5.1 (brand-new drive), or cooldown active, or headless | Seed the drive once manually; delete `watcher_state.json`; check `daemon status` |
+| Watcher runs but **never prompts** | Drive doesn't match §5.1 (brand-new drive), or cooldown active, or headless | Seed the drive once manually; run `smartbackup daemon clear-state`; check `daemon status` |
 | Prompt appears but backups to nothing | — | Check the panel's Device ID matches the folder you expect (`--device-name`) |
 | Second backup re-copies *everything* | Manifest missing/corrupt (warning was printed) or `--no-manifest` used | Normal recovery — manifest rebuilds; investigate the drive's health if recurring |
 | Backup **skips changes** after a dry-run | A SmartBackup **≤ 0.6.0** dry-run wrote the manifest (fixed in 0.6.1) | Delete `.smartbackup_manifest.json`, run a real backup |
@@ -954,9 +953,8 @@ owned by root — `chown`/`mount` it read-write or pick another target.
 
 ### 8.5 Known limitations (current release)
 
-1. No built-in scheduler command (use OS tooling, §5.5).
-2. `restore` handles directories only — extract archives first (§6.5).
-3. No encryption, deduplication, versioning, or remote targets (§1).
+1. `restore` handles directories only — extract archives first (§6.5).
+2. No encryption, deduplication, versioning, or remote targets (§1).
 
 Remaining wiring items are tracked in [`docs/PLAN_WIRING_FIXES.md`](PLAN_WIRING_FIXES.md).
 

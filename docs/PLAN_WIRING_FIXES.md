@@ -18,10 +18,10 @@ noted). Locations are `file:line` as of v0.6.0. Companion document:
 | F3 | Restore strategies `NEWER` (implemented) and `RENAME` (stub) not selectable via CLI | 🟠 Medium | Missing wiring | 1 | ✅ fixed (0.7.0) |
 | F4 | `set_preferred_target()`, `set_device_name()`, `set_preferred_terminal()`, `set/get_auto_watch_cooldown()` have no CLI path | 🟠 Medium | Missing wiring | 2 | ✅ fixed (0.7.1) |
 | F5 | `watch --cooldown` ignores `auto_watch_cooldown` config (hard-coded default 300) | 🟡 Low-Med | Missing wiring | 2 | ✅ fixed (0.7.1) |
-| F6 | `SchedulerHelper.setup_scheduled_backup()` (+3 OS helpers) unreachable — no `schedule` command | 🟡 Low | Missing command | 3 | ⬜ pending |
-| F7 | `RestoreEngine.list_files()` / `get_manifest_info()` unused — CLI reimplements listing | 🟡 Low | Duplication | 3 | ⬜ pending |
-| F8 | `DeviceDetector.validate_device()` unused — duplicates the engine's write test | 🟡 Low | Duplication | 3 | ⬜ pending |
-| F9 | `DebounceLock.clear()` unreachable — users must hand-delete `watcher_state.json` | 🟡 Low | Missing wiring | 3 | ⬜ pending |
+| F6 | `SchedulerHelper.setup_scheduled_backup()` (+3 OS helpers) unreachable — no `schedule` command | 🟡 Low | Missing command | 3 | ✅ fixed (0.7.2) |
+| F7 | `RestoreEngine.list_files()` / `get_manifest_info()` unused — CLI reimplements listing | 🟡 Low | Duplication | 3 | ✅ fixed (0.7.2) |
+| F8 | `DeviceDetector.validate_device()` unused — duplicates the engine's write test | 🟡 Low | Duplication | 3 | ✅ fixed (0.7.2) |
+| F9 | `DebounceLock.clear()` unreachable — users must hand-delete `watcher_state.json` | 🟡 Low | Missing wiring | 3 | ✅ fixed (0.7.2) |
 | F10 | `ManifestFormat.SQLITE`, `FallbackHandler.notify_completion()` desktop notifications | ⚪ Backlog | Roadmap | 4 | ⬜ pending |
 | F11 | Failed path validation still reports success: a missing target dir makes `run_backup()` return early with `errors = 0`, so the CLI exits 0 and prints "Backup completed successfully!" while copying nothing | 🟠 Medium | Bug (discovered while writing Phase 0 tests) | 1 | ✅ fixed (0.6.3) |
 
@@ -221,7 +221,14 @@ CLI flag keeps precedence over config, config over hard-coded 300.
 
 ## 5. Phase 3 — Housekeeping (reachability & duplication)
 
-### F6 — Expose `setup_scheduled_backup()` as `smartbackup schedule` 🟡
+> **✅ Status: IMPLEMENTED (F6–F9)** on branch `fix/v0.7.2-wiring-housekeeping` (release 0.7.2). `smartbackup schedule [--hours N]` exposes
+> `SchedulerHelper.setup_scheduled_backup()` with runnable `-m smartbackup` recipes;
+> `smartbackup restore --list` and `--manifest-info` delegate to `RestoreEngine.list_files()`
+> and `RestoreEngine.get_manifest_info()`; `BackupEngine._validate_paths()` delegates to
+> `DeviceDetector.validate_device()`; and `smartbackup daemon clear-state` exposes
+> `DebounceLock.clear()`.
+
+### F6 — Expose `setup_scheduled_backup()` as `smartbackup schedule` 🟡 ✅ fixed
 
 `scheduler.py:26-36` dispatches to three recipe printers (`:39-149`) that are only reachable
 from tests. **Fix:** add `smartbackup schedule [--hours N]` that prints the OS-specific
@@ -232,7 +239,7 @@ entry point — see `scheduler.py:29,32`).
 Tests: reuse `tests/test_scheduler.py` dispatch assertions + a CLI invoke test.
 Docs: `USER_GUIDE.md` §5.5 gains the command (keep the manual recipes as fallback).
 
-### F7 — Stop duplicating restore listing 🟡
+### F7 — Stop duplicating restore listing 🟡 ✅ fixed
 
 `RestoreEngine.list_files()` (`restore.py:356-367`) and `get_manifest_info()`
 (`:369-387`) are unused; `cli.py:296-316` hand-rolls manifest iteration/rglob.
@@ -241,7 +248,7 @@ Docs: `USER_GUIDE.md` §5.5 gains the command (keep the manual recipes as fallba
 `smartbackup restore --manifest-info` or fold into `--show-manifest`.
 Preserves filtering behavior — update `tests/test_cli.py` expectations.
 
-### F8 — Unify the writability check 🟡
+### F8 — Unify the writability check 🟡 ✅ fixed
 
 `DeviceDetector.validate_device()` (`devices.py:85-97`) writes `.backup_test_write`;
 `BackupEngine._validate_paths()` (`engine.py:240-247`) writes `.write_test` — two
@@ -250,7 +257,7 @@ implementations, one unreachable (flagged in `codebase-analysis.md:542`).
 delete the inline block; or delete `validate_device()` if the engine's richer error
 messages are preferred. Choose one — don't keep both.
 
-### F9 — Debounce reset command 🟡
+### F9 — Debounce reset command 🟡 ✅ fixed
 
 `DebounceLock.clear()` (`watcher.py:238-247`) is unreachable; the User Guide tells users to
 delete `watcher_state.json` by hand. **Fix (pick one):**
