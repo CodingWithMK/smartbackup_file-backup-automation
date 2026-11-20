@@ -245,3 +245,21 @@ class TestSchedulerHelper:
             status = SchedulerHelper.get_daemon_status()
             assert status["installed"] is False
             assert status["running"] is False
+
+    def test_schedule_cli_command_default_and_custom_hours(self):
+        """Verify 'smartbackup schedule' prints runnable -m smartbackup recipes."""
+        from typer.testing import CliRunner
+
+        from smartbackup.cli import app
+
+        runner = CliRunner()
+        res_default = runner.invoke(app, ["schedule"])
+        assert res_default.exit_code == 0, res_default.output
+        assert "-m" in res_default.output
+        assert "smartbackup" in res_default.output
+        assert "scheduler.py" not in res_default.output
+
+        with patch.object(SchedulerHelper, "setup_scheduled_backup") as mock_setup:
+            res_custom = runner.invoke(app, ["schedule", "--hours", "6"])
+            assert res_custom.exit_code == 0, res_custom.output
+            mock_setup.assert_called_once_with(interval_hours=6)

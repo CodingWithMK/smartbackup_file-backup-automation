@@ -120,3 +120,72 @@ class TestRestoreConflictCli:
 
         assert result.exit_code == 0, result.output
         assert (target / "file1.txt").read_text() == "LOCAL CONTENT"
+
+
+class TestRestoreListAndManifestInfoCli:
+    """CLI tests for F7: RestoreEngine.list_files() and get_manifest_info()."""
+
+    def test_restore_list_with_pattern_filter(self, tmp_path: Path):
+        backup_root = tmp_path / "backup" / "Documents-Backup"
+        backup_root.mkdir(parents=True)
+        (backup_root / "notes.txt").write_text("hello")
+        (backup_root / "image.png").write_bytes(b"\x89PNG")
+
+        result = runner.invoke(
+            app,
+            [
+                "restore",
+                "--source",
+                str(tmp_path / "backup"),
+                "--list",
+                "--pattern",
+                "*.txt",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "notes.txt" in result.output
+        assert "image.png" not in result.output
+
+    def test_restore_manifest_info_displays_summary(self, tmp_path: Path):
+        from smartbackup.manifest.json_manifest import JsonManifestManager
+
+        backup_root = tmp_path / "backup" / "Documents-Backup"
+        backup_root.mkdir(parents=True)
+        (backup_root / "notes.txt").write_text("hello")
+
+        mgr = JsonManifestManager(backup_root)
+        manifest = mgr.load_or_create(tmp_path / "src")
+        manifest.backup_count = 3
+        mgr.save(manifest)
+
+        result = runner.invoke(
+            app,
+            [
+                "restore",
+                "--source",
+                str(tmp_path / "backup"),
+                "--manifest-info",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "BACKUP MANIFEST INFO" in result.output
+        assert "Backup Count" in result.output
+
+    def test_restore_manifest_info_missing_manifest_exits_1(self, tmp_path: Path):
+        backup_root = tmp_path / "backup" / "Documents-Backup"
+        backup_root.mkdir(parents=True)
+
+        result = runner.invoke(
+            app,
+            [
+                "restore",
+                "--source",
+                str(tmp_path / "backup"),
+                "--manifest-info",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "No manifest found" in result.output

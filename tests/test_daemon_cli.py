@@ -167,6 +167,27 @@ class TestWatchCooldownResolution:
             assert "DAEMON SERVICE STATUS" in result.output
             assert "54321" in result.output
 
+    def test_daemon_clear_state_removes_watcher_state(self, tmp_path: Path, monkeypatch):
+        """Ensure 'smartbackup daemon clear-state' clears watcher_state.json (F9)."""
+        from smartbackup.config import ConfigManager
+        from smartbackup.platform.watcher import DebounceLock
+
+        monkeypatch.setattr(ConfigManager, "_get_config_dir", lambda self: tmp_path / "cfg")
+        drive = tmp_path / "drive"
+        drive.mkdir()
+
+        lock = DebounceLock(cooldown_seconds=300)
+        lock.record_prompt(drive)
+        assert lock.state_file.exists()
+        assert lock.should_prompt(drive) is False
+
+        result = runner.invoke(app, ["daemon", "clear-state"])
+        assert result.exit_code == 0, result.output
+        assert not lock.state_file.exists()
+
+        fresh_lock = DebounceLock(cooldown_seconds=300)
+        assert fresh_lock.should_prompt(drive) is True
+
 
 class TestInteractivePromptCLI:
     """Tests for --prompt interactive mode."""
