@@ -50,13 +50,13 @@ class SchedulerHelper:
             f"   - Trigger: Daily / Every {interval_hours} hours\n"
             f"   - Action: Start a program\n"
             f"     - Program: [cyan]{python_path}[/cyan]\n"
-            f'     - Arguments: [cyan]"{script_path}"[/cyan]\n\n'
+            f"     - Arguments: [cyan]-m smartbackup[/cyan]\n\n"
             f"Or run the following command as Administrator:"
         )
 
         cmd = (
             f'schtasks /create /tn "{task_name}" '
-            f'/tr "\\"{python_path}\\" \\"{script_path}\\"" '
+            f'/tr "\\"{python_path}\\" -m smartbackup" '
             f"/sc hourly /mo {interval_hours}"
         )
 
@@ -81,7 +81,8 @@ class SchedulerHelper:
     <key>ProgramArguments</key>
     <array>
         <string>{sys.executable}</string>
-        <string>{script_path}</string>
+        <string>-m</string>
+        <string>smartbackup</string>
     </array>
     <key>StartInterval</key>
     <integer>{interval_seconds}</integer>
@@ -114,7 +115,7 @@ Description=Smart Backup Service
 
 [Service]
 Type=oneshot
-ExecStart={sys.executable} {script_path}"""
+ExecStart={sys.executable} -m smartbackup"""
 
         timer_content = f"""[Unit]
 Description=Run Smart Backup every {interval_hours} hours
@@ -131,7 +132,7 @@ WantedBy=timers.target"""
             f"[bold]Option 1 - Cron:[/bold]\n"
             f"  1. Open crontab: [cyan]crontab -e[/cyan]\n"
             f"  2. Add the following line:\n"
-            f"     [cyan]{cron_schedule} {sys.executable} {script_path}[/cyan]\n\n"
+            f"     [cyan]{cron_schedule} {sys.executable} -m smartbackup[/cyan]\n\n"
             f"[bold]Option 2 - Systemd:[/bold]\n"
             f"  Create the service and timer files shown below,\n"
             f"  then enable with:\n"

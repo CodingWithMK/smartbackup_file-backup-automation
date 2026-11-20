@@ -264,13 +264,11 @@ class BackupEngine:
             self.logger.error(f"Backup medium not found: {self.config.backup_path}")
             return False
 
-        # Check write permissions
-        try:
-            test_file = self.config.backup_path / ".write_test"
-            test_file.write_text("test")
-            test_file.unlink()
-        except Exception as e:
-            self.logger.error(f"No write permissions on backup medium: {e}")
+        # Check write permissions via DeviceDetector (unified writability probe)
+        from smartbackup.platform.devices import DeviceDetector
+
+        if not DeviceDetector(self.logger).validate_device(self.config.backup_path):
+            self.logger.error(f"No write permissions on backup medium: {self.config.backup_path}")
             return False
 
         return True

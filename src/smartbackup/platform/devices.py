@@ -88,7 +88,7 @@ class DeviceDetector:
             return False
 
         try:
-            test_file = path / ".backup_test_write"
+            test_file = path / ".write_test"
             test_file.write_text("test")
             test_file.unlink()
             return True
