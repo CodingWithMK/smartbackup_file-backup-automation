@@ -94,7 +94,7 @@ copies only what changed since the last run. If no drive is found, you'll be off
 temporary backup instead.
 
 ```bash
-smartbackup --version     # verify: smartbackup 0.7.2
+smartbackup --version     # verify: smartbackup 0.8.0
 smartbackup --help        # all commands and options
 ```
 

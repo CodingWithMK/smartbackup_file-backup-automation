@@ -22,7 +22,7 @@ noted). Locations are `file:line` as of v0.6.0. Companion document:
 | F7 | `RestoreEngine.list_files()` / `get_manifest_info()` unused — CLI reimplements listing | 🟡 Low | Duplication | 3 | ✅ fixed (0.7.2) |
 | F8 | `DeviceDetector.validate_device()` unused — duplicates the engine's write test | 🟡 Low | Duplication | 3 | ✅ fixed (0.7.2) |
 | F9 | `DebounceLock.clear()` unreachable — users must hand-delete `watcher_state.json` | 🟡 Low | Missing wiring | 3 | ✅ fixed (0.7.2) |
-| F10 | `ManifestFormat.SQLITE`, `FallbackHandler.notify_completion()` desktop notifications | ⚪ Backlog | Roadmap | 4 | ⬜ pending |
+| F10 | `ManifestFormat.SQLITE`, `FallbackHandler.notify_completion()` desktop notifications | ⚪ Backlog | Roadmap | 4 | ✅ fixed (0.8.0) |
 | F11 | Failed path validation still reports success: a missing target dir makes `run_backup()` return early with `errors = 0`, so the CLI exits 0 and prints "Backup completed successfully!" while copying nothing | 🟠 Medium | Bug (discovered while writing Phase 0 tests) | 1 | ✅ fixed (0.6.3) |
 
 ---
@@ -268,14 +268,20 @@ Recommendation: a standalone `smartbackup daemon clear-state` so it works while 
 is *stopped* and doesn't imply "reset then watch". Tests: state file removed, next
 `should_prompt()` returns True.
 
-### F10 — Minor cleanups 🟡
+### F10 — SQLite manifest backend & desktop notifications ✅ fixed (0.8.0)
 
-- `FallbackHandler.notify_completion()` (`handlers.py:82-87`) — either implement desktop
-  notifications (Windows toast / `osascript` / `notify-send`) behind a `--notify` flag, or
-  document as a stub and stop advertising it.
-- `DeviceWatcher.start(blocking=False)` (`watcher.py:385-408`) — prod code always blocks;
-  keep (tested) but it's fine as-is.
-- Remove/repair stale links if `docs/codebase-analysis.md` findings are resolved.
+> **✅ Status: IMPLEMENTED (F10)** on branch `feat/v0.8.0-sqlite-manifest-and-notifications` (release 0.8.0).
+> - `SqliteManifestManager` (`src/smartbackup/manifest/sqlite_manifest.py`) implements
+>   `ManifestFormat.SQLITE` (`.smartbackup_manifest.db`) with atomic writes and corruption recovery.
+> - `src/smartbackup/manifest/factory.py` (`get_manifest_manager`, `detect_manifest_manager`,
+>   `has_manifest`) wires auto-detection and seamless `json ↔ sqlite` migration across
+>   `BackupEngine`, `RestoreEngine`, `DriveMatcher`, and CLI commands (`--manifest-format`,
+>   `--show-manifest`, `--verify`, `--list-devices`, `config set manifest_format`).
+> - `FallbackHandler.notify_completion(..., desktop=notify)` dispatches cross-platform
+>   desktop notifications (`osascript` / `notify-send` / PowerShell) behind `--notify`
+>   with non-fatal fallback.
+> - `DeviceWatcher.start(blocking=False)` remains tested and unchanged as intended.
+> - Stale `docs/codebase-analysis.md` references cleaned up.
 
 ---
 
@@ -349,4 +355,11 @@ smartbackup config set bogus x                      # exit 1 + valid keys  ✅ v
 smartbackup config set auto_watch_cooldown 42
 smartbackup watch                                   # banner: Debounce cooldown: 42s  ✅ verified
 smartbackup watch --cooldown 7                      # flag wins over config  ✅ verified
+
+# F10 (WAS UNIMPLEMENTED — now PASSING, verified in 0.8.0)
+smartbackup --source SRC --target TGT --manifest-format sqlite
+smartbackup --show-manifest --target TGT            # Format: sqlite  ✅ verified
+smartbackup --verify --target TGT                   # exit 0  ✅ verified
+smartbackup config set manifest_format sqlite       # persisted  ✅ verified
+smartbackup --source SRC --target TGT --notify      # dispatches desktop notification  ✅ verified
 ```

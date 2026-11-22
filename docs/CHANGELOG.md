@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-11-23
+
+### Added
+- **SQLite manifest backend (`ManifestFormat.SQLITE`, F10)**:
+  - Implemented `SqliteManifestManager` (`.smartbackup_manifest.db`) using Python's
+    standard-library `sqlite3` with atomic temp-file replacement for large backups.
+  - Added manifest factory and auto-detection helpers (`get_manifest_manager`,
+    `detect_manifest_manager`, `has_manifest`) wired across `BackupEngine`,
+    `RestoreEngine`, `DriveMatcher`, and all CLI inspection commands (`--show-manifest`,
+    `--verify`, `--list-devices`, `restore --list`, `restore --manifest-info`).
+  - Seamless format migration when switching between `json` and `sqlite` (preserving
+    history and removing the superseded manifest file after a successful non-dry-run save).
+  - Wired `manifest_format` through `--manifest-format [json|sqlite]`,
+    `ConfigManager.get/set_manifest_format()`, and `smartbackup config set|get|unset manifest_format`.
+- **Cross-platform desktop notifications (`--notify`, F10)**:
+  - Implemented best-effort OS desktop notifications in `FallbackHandler.notify_completion()`
+    (`osascript` on macOS, `notify-send` on Linux, PowerShell on Windows) behind the
+    opt-in `--notify` flag, with safe escaping, 5-second timeout, and non-fatal fallback.
+
 ## [0.7.2] - 2026-11-20
 
 ### Added
