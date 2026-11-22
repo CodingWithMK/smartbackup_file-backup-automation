@@ -15,7 +15,7 @@ from typing import Optional
 from rich.console import Console
 from rich.table import Table
 
-from smartbackup.manifest.json_manifest import JsonManifestManager
+from smartbackup.manifest.factory import get_manifest_manager, has_manifest
 from smartbackup.models import FileAction
 from smartbackup.ui.logger import BackupLogger
 
@@ -97,7 +97,7 @@ class RestoreEngine:
             self.backup_target = self.backup_target / device_name
         elif self.backup_target.exists():
             # Auto-detect: if no manifest at root, try auto-detected hostname
-            if not (self.backup_target / ".smartbackup_manifest.json").exists():
+            if not has_manifest(self.backup_target):
                 from smartbackup.platform.identity import get_device_name
 
                 candidate = self.backup_target / get_device_name()
@@ -108,7 +108,7 @@ class RestoreEngine:
         self.logger = logger or BackupLogger(verbose=True)
         self.result = RestoreResult()
         self._lock = threading.Lock()
-        self._manifest_manager = JsonManifestManager(self.backup_target)
+        self._manifest_manager = get_manifest_manager(self.backup_target)
 
     def restore(
         self,

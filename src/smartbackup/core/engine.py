@@ -14,7 +14,11 @@ from smartbackup.config import BackupConfig
 from smartbackup.core.detector import ChangeDetector
 from smartbackup.core.scanner import ExclusionFilter, FileScanner
 from smartbackup.manifest.base import Manifest, ManifestManager
-from smartbackup.manifest.json_manifest import JsonManifestManager
+from smartbackup.manifest.factory import (
+    detect_manifest_manager,
+    get_manifest_manager,
+    has_manifest,
+)
 from smartbackup.models import BackupResult, FileAction, FileInfo
 from smartbackup.ui.logger import BackupLogger
 
@@ -46,6 +50,7 @@ class BackupEngine:
         self._total_files = 0
         self._manifest_manager: Optional[ManifestManager] = None
         self._manifest: Optional[Manifest] = None
+        self._migrated_from_manifest_path: Optional[Path] = None
         self._backed_up_files: list[FileInfo] = []
         self._backup_target: Optional[Path] = None
 
@@ -91,13 +96,38 @@ class BackupEngine:
             self._backup_target = backup_target
 
             # 4. Initialize manifest if enabled
+            self._migrated_from_manifest_path = None
             if self.config.use_manifest:
-                self._manifest_manager = JsonManifestManager(backup_target)
-                self._manifest = self._manifest_manager.load_or_create(self.config.source_path)
+                self._manifest_manager = get_manifest_manager(
+                    backup_target, self.config.manifest_format
+                )
+                if self._manifest_manager.exists():
+                    self._manifest = self._manifest_manager.load_or_create(
+                        self.config.source_path
+                    )
+                else:
+                    existing_other = detect_manifest_manager(backup_target)
+                    loaded_other = existing_other.load() if existing_other else None
+                    if existing_other and loaded_other is not None:
+                        self._manifest = loaded_other
+                        self._manifest.format = self._manifest_manager.FORMAT
+                        self._migrated_from_manifest_path = existing_other.manifest_path
+                        self.logger.info(
+                            f"Migrating manifest format from "
+                            f"{existing_other.FORMAT.value} to "
+                            f"{self._manifest_manager.FORMAT.value}"
+                        )
+                    else:
+                        self._manifest = self._manifest_manager.create(
+                            self.config.source_path
+                        )
                 # Embed device hostname in manifest metadata
                 if self.config.device_name:
                     self._manifest.hostname = self.config.device_name
-                self.logger.info(f"Manifest: {self._manifest.total_files} files tracked")
+                self.logger.info(
+                    f"Manifest ({self._manifest_manager.FORMAT.value}): "
+                    f"{self._manifest.total_files} files tracked"
+                )
 
             # 5. Scan source files
             source_files = scanner.scan(self.config.source_path)
@@ -157,6 +187,16 @@ class BackupEngine:
                     self._manifest, self._backed_up_files, deleted_paths=deleted_paths
                 )
                 if self._manifest_manager.save(self._manifest):
+                    if (
+                        self._migrated_from_manifest_path is not None
+                        and self._migrated_from_manifest_path
+                        != self._manifest_manager.manifest_path
+                    ):
+                        try:
+                            self._migrated_from_manifest_path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        self._migrated_from_manifest_path = None
                     self.logger.success(
                         f"Manifest updated: {self._manifest.total_files} files tracked"
                     )
@@ -211,11 +251,10 @@ class BackupEngine:
             return  # Fresh backup, no migration needed
 
         # Check for legacy indicators at the root level
-        legacy_manifest = backup_root / ".smartbackup_manifest.json"
         legacy_logs = backup_root / "_backup_logs"
         has_root_files = any(item.is_file() for item in backup_root.iterdir())
 
-        if not (legacy_manifest.exists() or legacy_logs.exists() or has_root_files):
+        if not (has_manifest(backup_root) or legacy_logs.exists() or has_root_files):
             return  # Already using new layout or empty
 
         device_name = self.config.device_name

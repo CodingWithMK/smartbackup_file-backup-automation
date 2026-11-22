@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from smartbackup.manifest.base import Manifest, ManifestManager
+from smartbackup.manifest.base import Manifest, ManifestFormat, ManifestManager
 
 
 class JsonManifestManager(ManifestManager):
@@ -16,6 +16,8 @@ class JsonManifestManager(ManifestManager):
     Stores manifest as a human-readable JSON file.
     Best for smaller backups (< 100,000 files).
     """
+
+    FORMAT = ManifestFormat.JSON
 
     @property
     def manifest_path(self) -> Path:
@@ -85,18 +87,3 @@ class JsonManifestManager(ManifestManager):
 
             print(f"Warning: Failed to save manifest: {e}", file=sys.stderr)
             return False
-
-    def load_or_create(self, source_path: Path) -> Manifest:
-        """
-        Load existing manifest or create a new one.
-
-        Args:
-            source_path: The source directory being backed up
-
-        Returns:
-            Existing or new manifest
-        """
-        manifest = self.load()
-        if manifest is None:
-            manifest = self.create(source_path)
-        return manifest

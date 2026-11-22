@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from smartbackup.config import ConfigManager
+from smartbackup.manifest.factory import has_manifest
 from smartbackup.platform.identity import get_device_name
 from smartbackup.platform.resolver import PathResolver
 
@@ -119,11 +120,10 @@ class DriveMatcher:
         except (PermissionError, OSError):
             return False
 
-        # 2. Check per-device layout: Documents-Backup/<hostname>/.smartbackup_manifest.json
+        # 2. Check per-device layout: Documents-Backup/<hostname>/.smartbackup_manifest.{json,db}
         device_name = self.config_manager.get_device_name() or get_device_name()
-        per_device_manifest = backup_root / device_name / ".smartbackup_manifest.json"
         try:
-            if per_device_manifest.exists():
+            if has_manifest(backup_root / device_name):
                 return True
         except (PermissionError, OSError):
             pass
@@ -136,10 +136,9 @@ class DriveMatcher:
         except (PermissionError, OSError):
             pass
 
-        # 3. Check legacy flat layout: Documents-Backup/.smartbackup_manifest.json
-        legacy_manifest = backup_root / ".smartbackup_manifest.json"
+        # 3. Check legacy flat layout: Documents-Backup/.smartbackup_manifest.{json,db}
         try:
-            if legacy_manifest.exists():
+            if has_manifest(backup_root):
                 return True
         except (PermissionError, OSError):
             pass

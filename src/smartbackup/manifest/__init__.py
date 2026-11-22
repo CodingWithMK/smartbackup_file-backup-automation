@@ -13,7 +13,14 @@ from smartbackup.manifest.base import (
     ManifestFormat,
     ManifestManager,
 )
+from smartbackup.manifest.factory import (
+    SUPPORTED_MANIFEST_FORMATS,
+    detect_manifest_manager,
+    get_manifest_manager,
+    has_manifest,
+)
 from smartbackup.manifest.json_manifest import JsonManifestManager
+from smartbackup.manifest.sqlite_manifest import SqliteManifestManager
 
 __all__ = [
     "Manifest",
@@ -22,4 +29,9 @@ __all__ = [
     "ManifestFormat",
     "ManifestManager",
     "JsonManifestManager",
+    "SqliteManifestManager",
+    "SUPPORTED_MANIFEST_FORMATS",
+    "get_manifest_manager",
+    "detect_manifest_manager",
+    "has_manifest",
 ]

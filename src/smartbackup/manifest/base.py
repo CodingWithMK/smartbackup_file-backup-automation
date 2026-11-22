@@ -235,6 +235,7 @@ class ManifestManager(ABC):
     """
 
     MANIFEST_FILENAME = ".smartbackup_manifest"
+    FORMAT: ManifestFormat = ManifestFormat.JSON
 
     def __init__(self, backup_path: Path):
         """
@@ -290,9 +291,25 @@ class ManifestManager(ABC):
             New empty manifest
         """
         return Manifest(
+            format=self.FORMAT,
             source=str(source_path),
             backup_count=0,
         )
+
+    def load_or_create(self, source_path: Path) -> Manifest:
+        """
+        Load existing manifest or create a new one.
+
+        Args:
+            source_path: The source directory being backed up
+
+        Returns:
+            Existing or new manifest
+        """
+        manifest = self.load()
+        if manifest is None:
+            manifest = self.create(source_path)
+        return manifest
 
     def diff(
         self, source_files: dict[Path, FileInfo], manifest: Optional[Manifest] = None
