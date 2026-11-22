@@ -246,7 +246,7 @@ YOUR_EXTERNAL_DRIVE/
 <target>/
 └── Documents-Backup/                     # fixed folder name (internal option --backup-folder)
     ├── <Device>/                         # one folder per machine
-    │   ├── .smartbackup_manifest.json    # incremental state (atomic writes)
+    │   ├── .smartbackup_manifest.json    # incremental state (or .smartbackup_manifest.db with --manifest-format sqlite)
     │   ├── _backup_logs/                 # one log per run
     │   │   └── backup_YYYYMMDD_HHMMSS.log
     │   └── <mirrored source tree>
@@ -788,6 +788,7 @@ The file is created on first write. The config directory also holds `watcher_sta
 | `device_name` | string | none (use hostname) | Overrides the auto-detected device name (used by the watcher matcher) | ✅ `config set device_name` (sanitized); `--device-name` is per-run only |
 | `auto_watch_cooldown` | int (seconds) | `300` | Watcher debounce cooldown | ✅ `config set auto_watch_cooldown`; `watch --cooldown` overrides it per run |
 | `preferred_terminal` | string | none | Terminal emulator for spawned prompt windows: `iterm`/`iterm2` on macOS, any emulator binary name on Linux | ✅ `config set preferred_terminal` |
+| `manifest_format` | string | `json` | Manifest storage backend (`json` or `sqlite`) | ✅ `config set manifest_format`; `--manifest-format` overrides it per run |
 
 Example `config.json`:
 
@@ -797,7 +798,8 @@ Example `config.json`:
   "preferred_target": "MY_BACKUP_DISK",
   "device_name": "Work-Laptop",
   "auto_watch_cooldown": 300,
-  "preferred_terminal": "iTerm2"
+  "preferred_terminal": "iTerm2",
+  "manifest_format": "sqlite"
 }
 ```
 
@@ -988,11 +990,12 @@ smartbackup [OPTIONS]
       --hash-all           SHA-256 for all files
   -v, --version            Print version and exit
 
-smartbackup restore  -s PATH [-t PATH] [-p GLOB]... [--conflict skip|overwrite|newer|rename] [--overwrite] [--dry-run] [--list] [--device-name TEXT]
+smartbackup restore  -s PATH [-t PATH] [-p GLOB]... [--conflict skip|overwrite|newer|rename] [--overwrite] [--dry-run] [--list] [--manifest-info] [--device-name TEXT]
 smartbackup compress -t PATH [-f zip|tar.gz] [--device-name TEXT] [--remove-source]
 smartbackup watch    [-i SECONDS] [-c SECONDS]
+smartbackup schedule [--hours N]
 smartbackup config   list | get KEY | set KEY VALUE | unset KEY | exclude PATTERN... | unexclude PATTERN...
-smartbackup daemon   install | status | uninstall
+smartbackup daemon   install | status | uninstall | clear-state
 ```
 
 ### B. Default exclusions
