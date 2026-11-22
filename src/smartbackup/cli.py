@@ -17,7 +17,11 @@ from rich.table import Table
 
 from smartbackup.backup import SmartBackup
 from smartbackup.config import ConfigManager
-from smartbackup.manifest.json_manifest import JsonManifestManager
+from smartbackup.manifest.factory import (
+    SUPPORTED_MANIFEST_FORMATS,
+    get_manifest_manager,
+    has_manifest,
+)
 from smartbackup.platform.identity import get_device_name, sanitize_device_name
 from smartbackup.platform.resolver import PathResolver
 from smartbackup.platform.scheduler import SchedulerHelper
@@ -25,7 +29,7 @@ from smartbackup.platform.terminal import TerminalSpawner
 from smartbackup.platform.watcher import DeviceWatcher
 from smartbackup.ui.logger import BackupLogger
 
-__version__ = "0.7.2"
+__version__ = "0.8.0"
 
 console = Console(highlight=False)
 
@@ -72,7 +76,7 @@ def _resolve_device_target(root: Path, device: Optional[str] = None) -> Path:
         return root / device
 
     # Legacy layout: manifest lives directly in root
-    if (root / ".smartbackup_manifest.json").exists():
+    if has_manifest(root):
         return root
 
     # New layout: use auto-detected device name
@@ -112,9 +116,8 @@ def _list_devices(backup_path: Path, backup_folder: str = "Documents-Backup") ->
     devices_found = False
     for item in sorted(root.iterdir()):
         if item.is_dir() and not item.name.startswith(("_", ".")):
-            manifest_path = item / ".smartbackup_manifest.json"
-            if manifest_path.exists():
-                manager = JsonManifestManager(item)
+            if has_manifest(item):
+                manager = get_manifest_manager(item)
                 manifest = manager.load()
                 if manifest:
                     table.add_row(
@@ -174,7 +177,7 @@ def _show_manifest(
     # Determine target: device subfolder or legacy layout
     target = _resolve_device_target(root, device)
 
-    manager = JsonManifestManager(target)
+    manager = get_manifest_manager(target)
     if not manager.exists():
         logger.warning("No manifest found in backup directory")
         return
@@ -227,7 +230,7 @@ def _verify_manifest(
 
     target = _resolve_device_target(root, device)
 
-    manager = JsonManifestManager(target)
+    manager = get_manifest_manager(target)
     manifest = manager.load()
     if manifest is None:
         logger.error("No manifest found or failed to load")
@@ -734,10 +737,21 @@ def backup_cmd(
         help="List devices with backups on the target drive and exit",
     ),
     no_manifest: bool = typer.Option(False, "--no-manifest", help="Disable manifest tracking"),
+    manifest_format: Optional[str] = typer.Option(
+        None,
+        "--manifest-format",
+        help="Manifest storage backend: json or sqlite (default: config manifest_format, else json)",
+        metavar="FORMAT",
+    ),
     show_manifest: bool = typer.Option(
         False, "--show-manifest", help="Display manifest contents and exit"
     ),
     verify: bool = typer.Option(False, "--verify", help="Verify backup against manifest and exit"),
+    notify: bool = typer.Option(
+        False,
+        "--notify",
+        help="Send a desktop notification when the backup finishes",
+    ),
     compress: Optional[str] = typer.Option(
         None,
         "--compress",
@@ -901,6 +915,18 @@ def backup_cmd(
     # Get preferred target
     target_label = label or config_manager.get_preferred_target()
 
+    # Resolve and validate manifest format (flag > config > "json")
+    raw_manifest_format = (
+        manifest_format if manifest_format is not None else config_manager.get_manifest_format()
+    )
+    resolved_manifest_format = raw_manifest_format.strip().lower()
+    if resolved_manifest_format not in SUPPORTED_MANIFEST_FORMATS:
+        logger.error(
+            f"Unsupported manifest format: {raw_manifest_format!r}. "
+            f"Choose from: {', '.join(SUPPORTED_MANIFEST_FORMATS)}"
+        )
+        raise typer.Exit(code=1)
+
     # Execute backup
     try:
         if dry_run:
@@ -923,6 +949,8 @@ def backup_cmd(
             hash_all=hash_all,
             dry_run=dry_run,
             exclusions=merged_exclusions,
+            manifest_format=resolved_manifest_format,
+            notify=notify,
         )
 
         if prompt:
@@ -963,6 +991,7 @@ _CONFIG_KEYS = (
     "device_name",
     "auto_watch_cooldown",
     "preferred_terminal",
+    "manifest_format",
     "exclusions",
 )
 
@@ -1065,6 +1094,16 @@ def config_set_cmd(
             raise typer.Exit(code=1)
         manager.set_device_name(sanitized)
         stored = sanitized
+    elif key == "manifest_format":
+        cleaned_fmt = value.strip().lower()
+        if cleaned_fmt not in SUPPORTED_MANIFEST_FORMATS:
+            console.print(
+                f"[red]Invalid value:[/red] {value!r} "
+                f"(choose from: {', '.join(SUPPORTED_MANIFEST_FORMATS)})"
+            )
+            raise typer.Exit(code=1)
+        manager.set_manifest_format(cleaned_fmt)
+        stored = cleaned_fmt
     else:  # preferred_target / preferred_terminal
         cleaned = value.strip()
         if not cleaned:

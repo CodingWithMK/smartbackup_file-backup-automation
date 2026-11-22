@@ -39,6 +39,8 @@ class SmartBackup:
         hash_all: bool = False,
         dry_run: bool = False,
         exclusions: Optional[set[str]] = None,
+        manifest_format: str = "json",
+        notify: bool = False,
     ) -> bool:
         """
         Executes the backup.
@@ -110,6 +112,7 @@ class SmartBackup:
             hash_all_files=hash_all,
             verbose=True,
             use_manifest=use_manifest,
+            manifest_format=manifest_format,
             compress_format=compress_format,
         )
 
@@ -123,7 +126,7 @@ class SmartBackup:
 
         # Notification
         success = result.errors == 0
-        self.fallback.notify_completion(result, success)
+        self.fallback.notify_completion(result, success, desktop=notify)
 
         return success
 
@@ -145,7 +148,7 @@ class SmartBackup:
 
         subtitle = Text(justify="center")
         subtitle.append("\n\n", style="")
-        subtitle.append("Intelligent Backup System v0.7.2\n", style="bold white")
+        subtitle.append("Intelligent Backup System v0.8.0\n", style="bold white")
         subtitle.append("Cross-Platform  •  Incremental  •  Efficient", style="dim")
 
         content = Group(Align.center(art), subtitle)

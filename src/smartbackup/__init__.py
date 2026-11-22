@@ -16,7 +16,7 @@ Quick Start:
     >>> backup.run()
 """
 
-__version__ = "0.7.2"
+__version__ = "0.8.0"
 __author__ = "Muhammed Musab Kaya - @CodingWithMK"
 __license__ = "MIT"
 
@@ -37,6 +37,10 @@ from smartbackup.manifest import (
     ManifestEntry,
     ManifestFormat,
     ManifestManager,
+    SqliteManifestManager,
+    detect_manifest_manager,
+    get_manifest_manager,
+    has_manifest,
 )
 from smartbackup.models import BackupResult, FileAction, FileInfo
 from smartbackup.platform.devices import DeviceDetector
@@ -81,6 +85,10 @@ __all__ = [
     "ManifestFormat",
     "ManifestManager",
     "JsonManifestManager",
+    "SqliteManifestManager",
+    "get_manifest_manager",
+    "detect_manifest_manager",
+    "has_manifest",
     # Platform
     "PathResolver",
     "DeviceDetector",

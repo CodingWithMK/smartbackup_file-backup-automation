@@ -122,7 +122,7 @@ class BackupConfig:
     verbose: bool = True
     # Manifest options
     use_manifest: bool = True  # Use manifest for faster incremental backups
-    manifest_format: str = "json"  # "json" or "sqlite" (future)
+    manifest_format: str = "json"  # "json" or "sqlite"
     # Compression options
     compress_format: Optional[str] = None  # None (no compression), "zip", or "tar.gz"
     # Watcher options
@@ -239,3 +239,15 @@ class ConfigManager:
         """Load preferred terminal emulator application."""
         config = self.load()
         return config.get("preferred_terminal")
+
+    def set_manifest_format(self, fmt: str) -> None:
+        """Save preferred manifest storage format ('json' or 'sqlite')."""
+        config = self.load()
+        config["manifest_format"] = fmt
+        self.save(config)
+
+    def get_manifest_format(self) -> str:
+        """Load preferred manifest storage format (default 'json')."""
+        config = self.load()
+        value = config.get("manifest_format", "json")
+        return str(value) if value else "json"
