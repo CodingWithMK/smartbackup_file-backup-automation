@@ -57,6 +57,7 @@ class TestConfigListAndGet:
             "device_name",
             "auto_watch_cooldown",
             "preferred_terminal",
+            "manifest_format",
             "exclusions",
         ):
             assert key in result.output
@@ -103,10 +104,22 @@ class TestConfigSetAndUnset:
     def test_set_preferred_terminal_and_target(self, config_dir: Path):
         assert _invoke("set", "preferred_terminal", "iterm").exit_code == 0
         assert _invoke("set", "preferred_target", "MY_DISK").exit_code == 0
+        assert _invoke("set", "manifest_format", "SQLITE").exit_code == 0
 
         stored = _stored(config_dir)
         assert stored["preferred_terminal"] == "iterm"
         assert stored["preferred_target"] == "MY_DISK"
+        assert stored["manifest_format"] == "sqlite"
+
+    def test_invalid_manifest_format_exits_1_and_does_not_write(self, config_dir: Path):
+        assert _invoke("set", "manifest_format", "json").exit_code == 0
+        before = (config_dir / "config.json").read_bytes()
+
+        result = _invoke("set", "manifest_format", "xml")
+
+        assert result.exit_code == 1
+        assert "Invalid value" in result.output
+        assert (config_dir / "config.json").read_bytes() == before
 
     def test_invalid_cooldown_exits_1_and_does_not_write(self, config_dir: Path):
         assert _invoke("set", "auto_watch_cooldown", "30").exit_code == 0

@@ -97,12 +97,14 @@ class TestCliSurfaceSmoke:
 
         version = _cli(["--version"], env)
         _assert_ok(version)
-        assert "0.7.2" in version.stdout
+        assert "0.8.0" in version.stdout
 
         help_out = _cli(["--help"], env)
         _assert_ok(help_out)
         assert "--dry-run" in help_out.stdout
         assert "--exclude" in help_out.stdout
+        assert "--manifest-format" in help_out.stdout
+        assert "--notify" in help_out.stdout
 
 
 class TestDryRunLifecycleSmoke:
@@ -359,5 +361,58 @@ class TestConfigCliSmoke:
         assert "*.iso" in json.loads(config_file.read_text(encoding="utf-8"))["exclusions"]
 
         _assert_ok(_cli(["config", "unexclude", "*.iso"], env))
-        stored = json.loads(config_file.read_text(encoding="utf-8")).get("exclusions", [])
-        assert "*.iso" not in stored
+        assert "*.iso" not in json.loads(config_file.read_text(encoding="utf-8"))["exclusions"]
+
+
+class TestSqliteManifestSmoke:
+    """F10: SQLite manifest end-to-end at the process boundary."""
+
+    def test_sqlite_backup_show_verify_and_restore(self, tmp_path: Path):
+        env = _sandbox_env(tmp_path)
+        src = tmp_path / "src"
+        tgt = tmp_path / "tgt"
+        restored = tmp_path / "restored"
+        src.mkdir()
+        tgt.mkdir()
+        (src / "hello.txt").write_text("sqlite-backed")
+
+        _assert_ok(
+            _cli(
+                [
+                    "--source",
+                    str(src),
+                    "--target",
+                    str(tgt),
+                    "--device-name",
+                    DEVICE,
+                    "--manifest-format",
+                    "sqlite",
+                ],
+                env,
+            )
+        )
+        db = tgt / "Documents-Backup" / DEVICE / ".smartbackup_manifest.db"
+        assert db.exists()
+        assert not (tgt / "Documents-Backup" / DEVICE / ".smartbackup_manifest.json").exists()
+
+        show = _cli(["--show-manifest", "--target", str(tgt), "--device-name", DEVICE], env)
+        _assert_ok(show)
+        assert "sqlite" in show.stdout.lower()
+
+        _assert_ok(_cli(["--verify", "--target", str(tgt), "--device-name", DEVICE], env))
+
+        _assert_ok(
+            _cli(
+                [
+                    "restore",
+                    "--source",
+                    str(tgt),
+                    "--target",
+                    str(restored),
+                    "--device-name",
+                    DEVICE,
+                ],
+                env,
+            )
+        )
+        assert (restored / "hello.txt").read_text() == "sqlite-backed"
