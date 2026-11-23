@@ -168,3 +168,75 @@ class TestBackupLogger:
         logger._clear_progress_line()
 
         assert logger._progress_line_active is False
+
+    def test_file_action_does_not_recreate_progress_bar(self, capsys):
+        """Logging file actions/warnings during backup must reuse one Progress instance."""
+        logger = BackupLogger(verbose=True)
+        try:
+            logger.progress(1, 5, "file1.txt", 100, 500)
+            bar_instance = logger._progress_bar
+            assert bar_instance is not None
+            assert logger._progress_line_active is True
+
+            # File actions and mid-copy messages must NOT tear down the progress bar
+            logger.file_action(FileAction.COPIED, Path("file1.txt"), "0.1 KB")
+            logger.warning("transient warning")
+            logger.info("mid-copy info")
+            logger.error("single file error")
+
+            assert logger._progress_bar is bar_instance
+            assert logger._progress_line_active is True
+
+            # Next progress tick updates the exact same Progress instance in place
+            logger.progress(2, 5, "file2.txt", 200, 500)
+            assert logger._progress_bar is bar_instance
+        finally:
+            logger.stop_progress()
+
+        assert logger._progress_bar is None
+        assert logger._progress_line_active is False
+
+        captured = capsys.readouterr()
+        assert "COPIED" in captured.out
+        assert "file1.txt" in captured.out
+
+    def test_engine_creates_single_progress_bar_across_multiple_files(self, tmp_path: Path):
+        """BackupEngine should create Progress at most once for an entire backup run."""
+        from unittest.mock import patch
+
+        from rich.progress import Progress
+
+        from smartbackup.config import BackupConfig
+        from smartbackup.core.engine import BackupEngine
+
+        src = tmp_path / "src"
+        tgt = tmp_path / "tgt"
+        src.mkdir()
+        tgt.mkdir()
+        for i in range(5):
+            (src / f"doc_{i}.txt").write_text(f"content-{i}")
+
+        cfg = BackupConfig(
+            source_path=src,
+            backup_path=tgt,
+            device_name="ProgBox",
+            log_to_file=False,
+        )
+        logger = BackupLogger(verbose=True)
+
+        created = []
+        orig_progress = Progress
+
+        def tracking_progress(*args, **kwargs):
+            bar = orig_progress(*args, **kwargs)
+            created.append(bar)
+            return bar
+
+        with patch("smartbackup.ui.logger.Progress", side_effect=tracking_progress):
+            result = BackupEngine(cfg, logger).run_backup()
+
+        assert result.errors == 0
+        assert result.copied_files == 5
+        assert len(created) == 1
+        assert logger._progress_bar is None
+        assert logger._progress_line_active is False

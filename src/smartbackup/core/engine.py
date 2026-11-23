@@ -168,6 +168,9 @@ class BackupEngine:
             if modified_files:
                 self._copy_files(modified_files, backup_target, FileAction.UPDATED)
 
+            # Stop the copy progress bar cleanly before post-copy phases
+            self.logger.stop_progress()
+
             # Delete old files
             if deleted_paths:
                 self.logger.info(f"Removing {len(deleted_paths)} obsolete files/folders...")
@@ -227,6 +230,7 @@ class BackupEngine:
             self.result.errors += 1
 
         finally:
+            self.logger.stop_progress()
             self.result.end_time = datetime.now()
 
             # Write log file. Logging is best-effort: a vanished or unwritable

@@ -41,12 +41,12 @@ class BackupLogger:
     def __init__(self, log_file: Optional[Path] = None, verbose: bool = True):
         self.log_file = log_file
         self.verbose = verbose
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self._log_buffer: list[str] = []
         self._progress_line_active = False
         self.console = Console(highlight=False)
 
-        # Rich progress bar (lazily initialised)
+        # Rich progress bar (lazily initialised, kept alive across file logs)
         self._progress_bar: Optional[Progress] = None
         self._progress_task_id: Optional[int] = None
         self._progress_total: int = 0
@@ -55,21 +55,45 @@ class BackupLogger:
         """Formatted timestamp."""
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    def stop_progress(self) -> None:
+        """Stop the Rich progress bar if it is running."""
+        with self.lock:
+            if self._progress_bar is not None:
+                try:
+                    self._progress_bar.stop()
+                except Exception:
+                    pass
+                self._progress_bar = None
+                self._progress_task_id = None
+                self._progress_total = 0
+            self._progress_line_active = False
+
     def _stop_progress(self) -> None:
         """Stop the Rich progress bar if it is running."""
-        if self._progress_bar is not None:
-            try:
-                self._progress_bar.stop()
-            except Exception:
-                pass
-            self._progress_bar = None
-            self._progress_task_id = None
-        self._progress_line_active = False
+        self.stop_progress()
 
     def _clear_progress_line(self) -> None:
         """Clears the current progress line (stops Rich progress)."""
-        if self._progress_line_active:
-            self._stop_progress()
+        with self.lock:
+            if self._progress_line_active or self._progress_bar is not None:
+                self.stop_progress()
+
+    def _print_line(self, message: str) -> None:
+        """
+        Print a line to the console without disrupting an active progress bar.
+
+        When a Rich Progress bar is active on ``self.console``, printing through
+        ``self._progress_bar.console`` (which shares ``self.console``) renders
+        the log line cleanly above the pinned progress bar without stopping or
+        recreating it.
+        """
+        with self.lock:
+            target_console = (
+                self._progress_bar.console
+                if self._progress_bar is not None
+                else self.console
+            )
+            target_console.print(message)
 
     def header(self, message: str) -> None:
         """Outputs a header."""
@@ -95,8 +119,7 @@ class BackupLogger:
     def info(self, message: str) -> None:
         """Information message."""
         if self.verbose:
-            self._clear_progress_line()
-            self.console.print(f"[cyan]i[/cyan]  \\[{self._timestamp()}] {message}")
+            self._print_line(f"[cyan]i[/cyan]  \\[{self._timestamp()}] {message}")
         self._log_to_file(f"[INFO] [{self._timestamp()}] {message}")
 
     def success(self, message: str) -> None:
@@ -107,14 +130,12 @@ class BackupLogger:
 
     def warning(self, message: str) -> None:
         """Warning message."""
-        self._clear_progress_line()
-        self.console.print(f"[yellow]![/yellow]  \\[{self._timestamp()}] {message}")
+        self._print_line(f"[yellow]![/yellow]  \\[{self._timestamp()}] {message}")
         self._log_to_file(f"[WARNING] [{self._timestamp()}] {message}")
 
     def error(self, message: str) -> None:
         """Error message."""
-        self._clear_progress_line()
-        self.console.print(f"[red]x[/red]  \\[{self._timestamp()}] {message}")
+        self._print_line(f"[red]x[/red]  \\[{self._timestamp()}] {message}")
         self._log_to_file(f"[ERROR] [{self._timestamp()}] {message}")
 
     def file_action(self, action: FileAction, file_path: Path, details: str = "") -> None:
@@ -130,9 +151,8 @@ class BackupLogger:
         style, icon, label = icons.get(action, ("", "?", "UNKNOWN"))
 
         if self.verbose or action in (FileAction.COPIED, FileAction.UPDATED, FileAction.ERROR):
-            self._clear_progress_line()
             detail_str = f" ({details})" if details else ""
-            self.console.print(f"[{style}]{icon}[/{style}] \\[{label}] {file_path}{detail_str}")
+            self._print_line(f"[{style}]{icon}[/{style}] \\[{label}] {file_path}{detail_str}")
 
         self._log_to_file(f"[{label}] [{self._timestamp()}] {file_path} {details}")
 
@@ -144,7 +164,7 @@ class BackupLogger:
         bytes_copied: int = 0,
         total_bytes: int = 0,
     ) -> None:
-        """Shows a progress bar using Rich Progress."""
+        """Shows and updates a single persistent Rich progress bar."""
         if total == 0:
             return
 
@@ -152,39 +172,43 @@ class BackupLogger:
         if len(current_file) > 40:
             current_file = "..." + current_file[-37:]
 
-        # Lazily create and start the Rich progress bar
-        if self._progress_bar is None:
-            columns = [
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(bar_width=30),
-                TextColumn("[progress.percentage]{task.percentage:>5.1f}%"),
-                MofNCompleteColumn(),
-            ]
-            if total_bytes > 0:
-                columns.append(TransferSpeedColumn())
-            columns.append(TimeRemainingColumn())
+        with self.lock:
+            # Lazily create and start the Rich progress bar once
+            if self._progress_bar is None:
+                columns = [
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(bar_width=30),
+                    TextColumn("[progress.percentage]{task.percentage:>5.1f}%"),
+                    MofNCompleteColumn(),
+                ]
+                if total_bytes > 0:
+                    columns.append(TransferSpeedColumn())
+                columns.append(TimeRemainingColumn())
 
-            self._progress_bar = Progress(
-                *columns,
-                console=self.console,
-                transient=True,
-            )
-            self._progress_total = total
-            self._progress_task_id = self._progress_bar.add_task(
-                current_file or "Backing up...",
-                total=total,
-            )
-            self._progress_bar.start()
-            self._progress_line_active = True
+                self._progress_bar = Progress(
+                    *columns,
+                    console=self.console,
+                    transient=True,
+                )
+                self._progress_total = total
+                self._progress_task_id = self._progress_bar.add_task(
+                    current_file or "Backing up...",
+                    total=total,
+                )
+                self._progress_bar.start()
+                self._progress_line_active = True
 
-        # Update progress
-        if self._progress_task_id is not None:
-            self._progress_bar.update(
-                self._progress_task_id,
-                completed=current,
-                description=current_file or "Backing up...",
-            )
+            # Update existing progress bar in place
+            if self._progress_task_id is not None:
+                update_kwargs: dict = {
+                    "completed": current,
+                    "description": current_file or "Backing up...",
+                }
+                if self._progress_total != total:
+                    self._progress_total = total
+                    update_kwargs["total"] = total
+                self._progress_bar.update(self._progress_task_id, **update_kwargs)
 
     def _format_size(self, size: int) -> str:
         """Formats file size in human-readable format."""
