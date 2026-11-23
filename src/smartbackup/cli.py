@@ -34,7 +34,7 @@ from smartbackup.platform.watcher import DeviceWatcher
 from smartbackup.ui.logger import BackupLogger
 from smartbackup.ui.selector import FolderSelector
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 console = Console(highlight=False)
 

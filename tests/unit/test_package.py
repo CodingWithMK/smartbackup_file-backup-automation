@@ -18,7 +18,12 @@ from smartbackup import (
     ExclusionFilter,
     FallbackHandler,
     FileScanner,
+    FolderItem,
+    FolderSelector,
+    KeyAction,
     PathResolver,
+    SelectionMetadata,
+    SelectiveBackupRecord,
     SmartBackup,
     TerminalSpawner,
     __version__,
@@ -35,7 +40,7 @@ class TestVersion:
         assert __version__ is not None
         assert isinstance(__version__, str)
         assert len(__version__.split(".")) >= 2
-        assert __version__ == "0.8.0"
+        assert __version__ == "0.9.0"
         assert cli_version == __version__
 
 
@@ -61,6 +66,11 @@ class TestImports:
             DebounceLock,
             DeviceWatcher,
             TerminalSpawner,
+            FolderItem,
+            FolderSelector,
+            KeyAction,
+            SelectionMetadata,
+            SelectiveBackupRecord,
         ]
         assert all(obj is not None for obj in exports)
 

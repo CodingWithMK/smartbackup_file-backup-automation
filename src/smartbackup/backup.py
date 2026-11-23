@@ -155,7 +155,7 @@ class SmartBackup:
 
         subtitle = Text(justify="center")
         subtitle.append("\n\n", style="")
-        subtitle.append("Intelligent Backup System v0.8.0\n", style="bold white")
+        subtitle.append("Intelligent Backup System v0.9.0\n", style="bold white")
         subtitle.append("Cross-Platform  •  Incremental  •  Efficient", style="dim")
 
         content = Group(Align.center(art), subtitle)

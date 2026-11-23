@@ -88,11 +88,12 @@ class TestCliSurfaceSmoke:
 
         version = _cli(["--version"], env)
         _assert_ok(version)
-        assert "0.8.0" in version.stdout
+        assert "0.9.0" in version.stdout
 
         help_out = _cli(["--help"], env)
         _assert_ok(help_out)
         assert "--dry-run" in help_out.stdout
+        assert "--select" in help_out.stdout
         assert "--exclude" in help_out.stdout
         assert "--manifest-format" in help_out.stdout
         assert "--notify" in help_out.stdout
