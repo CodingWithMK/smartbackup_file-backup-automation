@@ -175,3 +175,56 @@ class TestChangeDetector:
 
         assert len(new_files) == 1
         assert len(modified_files) == 1
+
+
+class TestScopedChangeDetector:
+    """Tests for ChangeDetector.detect_changes(..., scoped_folders=...) immunity."""
+
+    def test_scoped_detect_changes_only_deletes_within_selected_folders(
+        self, tmp_path: Path
+    ) -> None:
+        src = tmp_path / "src"
+        bak = tmp_path / "bak"
+        (src / "Projects").mkdir(parents=True)
+        (bak / "Projects").mkdir(parents=True)
+        (bak / "Finance").mkdir(parents=True)
+        (bak / "_backup_logs").mkdir(parents=True)
+
+        # Keep one file in Projects, remove one from Projects
+        keep_src = src / "Projects" / "keep.py"
+        keep_src.write_text("keep")
+        keep_bak = bak / "Projects" / "keep.py"
+        keep_bak.write_text("keep")
+        keep_stat = keep_bak.stat()
+
+        obsolete_bak = bak / "Projects" / "deleted_in_scope.py"
+        obsolete_bak.write_text("old")
+
+        # Unselected folder, root file, and logs must be immune
+        unselected_bak = bak / "Finance" / "budget.xlsx"
+        unselected_bak.write_text("safe")
+        root_bak = bak / "notes.txt"
+        root_bak.write_text("root safe")
+        log_bak = bak / "_backup_logs" / "backup.log"
+        log_bak.write_text("log safe")
+
+        source_files = {
+            Path("Projects/keep.py"): FileInfo(
+                path=keep_src,
+                relative_path=Path("Projects/keep.py"),
+                size=keep_stat.st_size,
+                mtime=keep_stat.st_mtime,
+            )
+        }
+
+        detector = ChangeDetector()
+        new_files, modified_files, deleted_files = detector.detect_changes(
+            source_files, bak, BackupLogger(verbose=False), scoped_folders=["Projects"]
+        )
+
+        assert new_files == []
+        assert modified_files == []
+        assert deleted_files == [obsolete_bak]
+        assert unselected_bak not in deleted_files
+        assert root_bak not in deleted_files
+        assert log_bak not in deleted_files

@@ -249,3 +249,52 @@ class TestFileScanner:
         info = files[Path("big.txt")]
         assert info.file_hash is not None
         assert len(info.file_hash) == 64
+
+
+class TestScopedFileScanner:
+    """Tests for FileScanner.scan(..., include_folders=...) selective scanning."""
+
+    def test_scan_include_folders_returns_only_selected_with_root_relative_paths(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "root.txt").write_text("root loose file")
+        (tmp_path / "Projects").mkdir()
+        (tmp_path / "Projects" / "app.py").write_text("print(1)")
+        (tmp_path / "Projects" / "sub").mkdir()
+        (tmp_path / "Projects" / "sub" / "mod.py").write_text("x = 1")
+        (tmp_path / "Finance").mkdir()
+        (tmp_path / "Finance" / "budget.csv").write_text("a,b")
+
+        scanner = FileScanner(ExclusionFilter(set(), set()), BackupLogger(verbose=False))
+        files = scanner.scan(tmp_path, include_folders=["Projects"])
+
+        assert set(files.keys()) == {
+            Path("Projects/app.py"),
+            Path("Projects/sub/mod.py"),
+        }
+        assert files[Path("Projects/app.py")].relative_path == Path("Projects/app.py")
+
+    def test_scan_include_folders_applies_exclusions_inside_selected_folder(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "Projects").mkdir()
+        (tmp_path / "Projects" / "main.py").write_text("ok")
+        (tmp_path / "Projects" / "node_modules").mkdir()
+        (tmp_path / "Projects" / "node_modules" / "pkg.js").write_text("skip")
+
+        scanner = FileScanner(
+            ExclusionFilter(DEFAULT_EXCLUSIONS, EXCLUDED_EXTENSIONS),
+            BackupLogger(verbose=False),
+        )
+        files = scanner.scan(tmp_path, include_folders=["Projects"])
+
+        assert set(files.keys()) == {Path("Projects/main.py")}
+
+    def test_scan_include_folders_skips_missing_folder_gracefully(self, tmp_path: Path) -> None:
+        (tmp_path / "Projects").mkdir()
+        (tmp_path / "Projects" / "a.txt").write_text("a")
+
+        scanner = FileScanner(ExclusionFilter(set(), set()), BackupLogger(verbose=False))
+        files = scanner.scan(tmp_path, include_folders=["Projects", "DoesNotExist"])
+
+        assert set(files.keys()) == {Path("Projects/a.txt")}

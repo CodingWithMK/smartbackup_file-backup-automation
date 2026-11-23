@@ -14,6 +14,7 @@ from smartbackup.manifest import (
     JsonManifestManager,
     ManifestEntry,
     ManifestFormat,
+    SelectiveBackupRecord,
     SqliteManifestManager,
     detect_manifest_manager,
     get_manifest_manager,
@@ -183,3 +184,114 @@ class TestManifestFactory:
 
         with pytest.raises(ValueError, match="Unsupported manifest format"):
             get_manifest_manager(tmp_path, "yaml")
+
+
+class TestSqliteSelectiveManifest:
+    """Tests for dedicated SQLite selective_backups table separation & backward compat."""
+
+    def test_selective_backups_stored_in_dedicated_table_and_roundtrips(
+        self, tmp_path: Path
+    ) -> None:
+        mgr = SqliteManifestManager(tmp_path)
+        manifest = mgr.create(Path("/docs"))
+        manifest.add_entry(
+            ManifestEntry(
+                relative_path="Projects/main.py",
+                file_hash="a" * 64,
+                size=128,
+                mtime=1700000000.0,
+                permissions=0o644,
+                backed_up_at=1700000100.0,
+            )
+        )
+        manifest.add_selective_backup(
+            SelectiveBackupRecord(
+                run_id="20261124_010000_#1",
+                source_root="/docs",
+                selected_folders=["Projects"],
+                available_folders_count=4,
+                files_scanned=1,
+                files_copied=1,
+                files_updated=0,
+                files_deleted=0,
+                files_skipped=0,
+                bytes_copied=128,
+                duration_seconds=0.42,
+                workflow_steps=["CLI invoked with --select", "Scoped scan completed"],
+            )
+        )
+
+        assert mgr.save(manifest) is True
+
+        # Verify dedicated SQLite table separation directly via sqlite3
+        conn = sqlite3.connect(str(mgr.manifest_path))
+        try:
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            assert {"metadata", "files", "selective_backups"}.issubset(tables)
+            sel_count = conn.execute("SELECT COUNT(*) FROM selective_backups").fetchone()[0]
+            file_count = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+            assert sel_count == 1
+            assert file_count == 1
+        finally:
+            conn.close()
+
+        loaded = mgr.load()
+        assert loaded is not None
+        assert loaded.last_backup_mode == "select"
+        assert loaded.last_selected_folders == ["Projects"]
+        assert len(loaded.selective_backups) == 1
+        rec = loaded.selective_backups[0]
+        assert rec.run_id == "20261124_010000_#1"
+        assert rec.selected_folders == ["Projects"]
+        assert rec.available_folders_count == 4
+        assert rec.files_copied == 1
+        assert rec.bytes_copied == 128
+        assert rec.workflow_steps == ["CLI invoked with --select", "Scoped scan completed"]
+
+    def test_legacy_sqlite_db_without_selective_backups_table_loads_cleanly(
+        self, tmp_path: Path
+    ) -> None:
+        mgr = SqliteManifestManager(tmp_path)
+        conn = sqlite3.connect(str(mgr.manifest_path))
+        try:
+            conn.executescript(
+                """
+                CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE files (
+                    relative_path TEXT PRIMARY KEY,
+                    file_hash TEXT NOT NULL,
+                    size INTEGER NOT NULL,
+                    mtime REAL NOT NULL,
+                    permissions INTEGER NOT NULL,
+                    backed_up_at REAL NOT NULL
+                );
+                """
+            )
+            conn.executemany(
+                "INSERT INTO metadata (key, value) VALUES (?, ?)",
+                [
+                    ("version", "1"),
+                    ("format", "sqlite"),
+                    ("created", "2026-01-01T00:00:00"),
+                    ("updated", "2026-01-01T00:00:00"),
+                    ("source", "/legacy"),
+                    ("hostname", "LegacyBox"),
+                    ("hash_algorithm", "sha256"),
+                    ("backup_count", "2"),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        loaded = mgr.load()
+        assert loaded is not None
+        assert loaded.backup_count == 2
+        assert loaded.last_backup_mode == "full"
+        assert loaded.last_selected_folders == []
+        assert loaded.selective_backups == []

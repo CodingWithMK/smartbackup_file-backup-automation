@@ -254,11 +254,19 @@ class TestDryRunStateParity:
         assert _run(src, target, dry_run=True) is True
         assert _source_state(src) == before
 
-    def test_dry_run_still_writes_the_run_log_report(self, tmp_path):
+    def test_dry_run_never_writes_log_or_creates_target_dir(self, tmp_path):
         src = _make_source(tmp_path)
         target = _make_target(tmp_path)
 
         assert _run(src, target, dry_run=True) is True
+        assert list(target.rglob("*.log")) == []
+        assert list(target.rglob("*")) == []
+
+    def test_real_run_writes_log_report(self, tmp_path):
+        src = _make_source(tmp_path)
+        target = _make_target(tmp_path)
+
+        assert _run(src, target, dry_run=False) is True
         assert list(target.rglob("*.log")) != []
 
     def test_repeated_dry_runs_are_idempotent(self, tmp_path):

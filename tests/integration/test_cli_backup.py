@@ -12,6 +12,7 @@ from typer.testing import CliRunner
 
 from smartbackup.cli import _list_available_drives, app, main
 from smartbackup.config import ConfigManager
+from smartbackup.models import SelectionMetadata
 from smartbackup.platform.scheduler import SchedulerHelper
 
 runner = CliRunner()
@@ -191,3 +192,121 @@ class TestSqliteManifestCLI:
         ):
             assert main() == 0
         assert mock_run.call_args.kwargs["manifest_format"] == "json"
+
+
+class TestSelectCLIFlag:
+    """Integration tests for --select CLI flag, TTY guard, cancellation, and --show-manifest."""
+
+    def test_select_fails_fast_in_non_tty_environment(self, tmp_path: Path):
+        src = tmp_path / "src"
+        tgt = tmp_path / "tgt"
+        src.mkdir()
+        tgt.mkdir()
+        (src / "Projects").mkdir()
+
+        with patch("smartbackup.cli._is_interactive_tty", return_value=False):
+            res = runner.invoke(
+                app, ["--select", "--source", str(src), "--target", str(tgt)]
+            )
+
+        assert res.exit_code == 1
+        assert "TTY" in res.output or "interactive terminal" in res.output
+
+    def test_select_cancelled_exits_0_without_running_backup(self, tmp_path: Path):
+        src = tmp_path / "src"
+        tgt = tmp_path / "tgt"
+        src.mkdir()
+        tgt.mkdir()
+        (src / "Projects").mkdir()
+
+        with (
+            patch("smartbackup.cli._is_interactive_tty", return_value=True),
+            patch("smartbackup.cli.FolderSelector.select", return_value=None),
+            patch("smartbackup.cli.SmartBackup.run") as mock_run,
+        ):
+            res = runner.invoke(
+                app, ["--select", "--source", str(src), "--target", str(tgt)]
+            )
+
+        assert res.exit_code == 0, res.output
+        mock_run.assert_not_called()
+
+    def test_select_forwards_selected_folders_and_metadata_to_smartbackup(
+        self, tmp_path: Path
+    ):
+        src = tmp_path / "src"
+        tgt = tmp_path / "tgt"
+        src.mkdir()
+        tgt.mkdir()
+        (src / "Projects").mkdir()
+        (src / "Finance").mkdir()
+
+        meta = SelectionMetadata(
+            command_option="--select",
+            source_root=str(src),
+            available_folders=["Finance", "Projects"],
+            selected_folders=["Projects"],
+            excluded_folders_count=0,
+            workflow_steps=["CLI invoked with --select"],
+        )
+
+        with (
+            patch("smartbackup.cli._is_interactive_tty", return_value=True),
+            patch("smartbackup.cli.FolderSelector.select", return_value=meta),
+            patch("smartbackup.cli.SmartBackup.run", return_value=True) as mock_run,
+        ):
+            res = runner.invoke(
+                app, ["--select", "--source", str(src), "--target", str(tgt)]
+            )
+
+        assert res.exit_code == 0, res.output
+        mock_run.assert_called_once()
+        assert mock_run.call_args.kwargs["selected_folders"] == ["Projects"]
+        assert mock_run.call_args.kwargs["selection_metadata"] is meta
+
+    def test_show_manifest_displays_selective_history_for_json_and_sqlite(
+        self, tmp_path: Path
+    ):
+        for fmt in ("json", "sqlite"):
+            src = tmp_path / f"src_{fmt}"
+            tgt = tmp_path / f"tgt_{fmt}"
+            (src / "Projects").mkdir(parents=True)
+            (src / "Projects" / "code.py").write_text("print('ok')")
+            tgt.mkdir()
+
+            meta = SelectionMetadata(
+                command_option="--select",
+                source_root=str(src),
+                available_folders=["Projects"],
+                selected_folders=["Projects"],
+                workflow_steps=["CLI invoked with --select"],
+            )
+
+            with (
+                patch("smartbackup.cli._is_interactive_tty", return_value=True),
+                patch("smartbackup.cli.FolderSelector.select", return_value=meta),
+            ):
+                run_res = runner.invoke(
+                    app,
+                    [
+                        "--select",
+                        "--source",
+                        str(src),
+                        "--target",
+                        str(tgt),
+                        "--device-name",
+                        f"Dev_{fmt}",
+                        "--manifest-format",
+                        fmt,
+                    ],
+                )
+            assert run_res.exit_code == 0, run_res.output
+
+            show_res = runner.invoke(
+                app,
+                ["--show-manifest", "--target", str(tgt), "--device-name", f"Dev_{fmt}"],
+            )
+            assert show_res.exit_code == 0, show_res.output
+            assert "Selective (--select)" in show_res.output
+            assert "Selective Backup History (--select)" in show_res.output
+            assert "Projects" in show_res.output

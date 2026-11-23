@@ -10,6 +10,7 @@ from smartbackup.manifest.base import (
     ManifestDiff,
     ManifestEntry,
     ManifestFormat,
+    SelectiveBackupRecord,
 )
 from smartbackup.manifest.json_manifest import JsonManifestManager
 from smartbackup.models import FileInfo
@@ -648,3 +649,132 @@ class TestManifestHashingAndVerification:
         )
 
         assert len(manager.verify(manifest, tmp_path, verify_hashes=True)) == 0
+
+
+class TestSelectiveManifestJson:
+    """Tests for SelectiveBackupRecord, legacy JSON load, and scoped diff() immunity."""
+
+    def test_selective_backup_record_roundtrip(self) -> None:
+        rec = SelectiveBackupRecord(
+            run_id="20261124_010000_#2",
+            source_root="/home/user/Documents",
+            selected_folders=["Projects", "Work"],
+            available_folders_count=5,
+            files_scanned=12,
+            files_copied=3,
+            files_updated=1,
+            files_deleted=2,
+            files_skipped=8,
+            bytes_copied=4096,
+            duration_seconds=1.25,
+            workflow_steps=["CLI invoked with --select", "Scoped scan completed"],
+        )
+
+        restored = SelectiveBackupRecord.from_dict(rec.to_dict())
+        assert restored.run_id == rec.run_id
+        assert restored.command_option == "--select"
+        assert restored.scope == "folders"
+        assert restored.selected_folders == ["Projects", "Work"]
+        assert restored.available_folders_count == 5
+        assert restored.files_copied == 3
+        assert restored.files_deleted == 2
+        assert restored.bytes_copied == 4096
+        assert restored.workflow_steps == rec.workflow_steps
+
+    def test_legacy_json_manifest_without_selective_fields_loads_cleanly(self) -> None:
+        legacy_data = {
+            "version": 1,
+            "format": "json",
+            "source": "/legacy/docs",
+            "hostname": "OldPC",
+            "hash_algorithm": "sha256",
+            "backup_count": 4,
+            "files": {},
+        }
+
+        manifest = Manifest.from_dict(legacy_data)
+        assert manifest.last_backup_mode == "full"
+        assert manifest.last_selected_folders == []
+        assert manifest.selective_backups == []
+
+    def test_add_selective_backup_and_full_backup_preserves_history(self, tmp_path: Path) -> None:
+        mgr = JsonManifestManager(tmp_path)
+        manifest = mgr.create(Path("/docs"))
+        record = SelectiveBackupRecord(
+            run_id="20261124_010000_#1",
+            source_root="/docs",
+            selected_folders=["Projects"],
+            available_folders_count=3,
+            files_copied=2,
+        )
+        manifest.add_selective_backup(record)
+        assert manifest.last_backup_mode == "select"
+        assert manifest.last_selected_folders == ["Projects"]
+        assert len(manifest.selective_backups) == 1
+
+        assert mgr.save(manifest) is True
+        loaded = mgr.load()
+        assert loaded is not None
+        assert loaded.last_backup_mode == "select"
+        assert loaded.last_selected_folders == ["Projects"]
+        assert len(loaded.selective_backups) == 1
+        assert loaded.selective_backups[0].run_id == "20261124_010000_#1"
+
+        # Subsequent full run flips mode back to full while preserving selective history
+        loaded.last_backup_mode = "full"
+        loaded.last_selected_folders = []
+        assert mgr.save(loaded) is True
+        reloaded = mgr.load()
+        assert reloaded is not None
+        assert reloaded.last_backup_mode == "full"
+        assert reloaded.last_selected_folders == []
+        assert len(reloaded.selective_backups) == 1
+
+    def test_scoped_diff_protects_unselected_folders_and_root_files(self, tmp_path: Path) -> None:
+        mgr = JsonManifestManager(tmp_path)
+        manifest = Manifest(source="/docs")
+        for rel in (
+            "Projects/keep.py",
+            "Projects/removed.py",
+            "Finance/budget.xlsx",
+            "Projects",  # loose root file sharing name with selected folder!
+            "readme.txt",
+        ):
+            manifest.add_entry(
+                ManifestEntry(
+                    relative_path=rel,
+                    file_hash="abc",
+                    size=10,
+                    mtime=100.0,
+                    permissions=0o644,
+                    backed_up_at=100.0,
+                )
+            )
+
+        # Source scan only contains Projects/keep.py (Projects/removed.py deleted)
+        source_files = {
+            Path("Projects/keep.py"): FileInfo(
+                path=Path("/docs/Projects/keep.py"),
+                relative_path=Path("Projects/keep.py"),
+                size=10,
+                mtime=100.0,
+            )
+        }
+        # Normalize entry key to match OS path representation used by ManifestManager.diff
+        manifest.entries = {
+            str(Path(k)): ManifestEntry(
+                relative_path=str(Path(k)),
+                file_hash=v.file_hash,
+                size=v.size,
+                mtime=v.mtime,
+                permissions=v.permissions,
+                backed_up_at=v.backed_up_at,
+            )
+            for k, v in manifest.entries.items()
+        }
+
+        diff = mgr.diff(source_files, manifest, scoped_folders=["Projects"])
+        assert diff.deleted_paths == [str(Path("Projects/removed.py"))]
+        assert str(Path("Finance/budget.xlsx")) not in diff.deleted_paths
+        assert "Projects" not in diff.deleted_paths
+        assert "readme.txt" not in diff.deleted_paths
