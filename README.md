@@ -49,13 +49,16 @@ your backups:
 |---------|-------------|
 | 🚀 **Cross-Platform** | Works on Windows, macOS, and Linux |
 | 🔍 **Smart Filtering** | Auto-skips `node_modules`, `venv`, `.git`, `__pycache__`, build outputs, caches |
-| 📊 **Incremental Backup** | JSON manifest on the drive — only new or modified files are copied |
+| 📊 **Incremental Backup** | JSON or SQLite manifest (`--manifest-format json\|sqlite`) with auto-detection & seamless migration |
 | 🔐 **SHA-256 Hashing** | Optional tiered hashing (`--hash` ≤ 50 MB, `--hash-all` for everything) |
-| 🔄 **Restore Support** | Pattern filtering, dry-run preview, overwrite control |
+| 🔄 **Restore Support** | Conflict strategies (`skip`, `overwrite`, `newer`, `rename`), pattern filtering, `--manifest-info`, dry-run preview |
 | 💻 **Multi-Device** | Per-device backup folders — multiple machines share one drive |
 | 📦 **Compression** | `zip` / `tar.gz` — during backup or afterwards via `compress` |
 | 🔌 **Auto-Detection** | Finds external drives; optional watcher daemon prompts on plug-in |
-| 📝 **Detailed Logging** | Progress bar + per-run log file on the backup drive |
+| ⚙️ **Config CLI** | Manage persistent settings & exclusions via `smartbackup config` (no manual JSON edits) |
+| 🔔 **Desktop Notifications** | Opt-in completion alerts (`--notify`) via `osascript`, `notify-send`, or PowerShell |
+| 🗓️ **Scheduling Helper** | Print OS-specific `schtasks`, `launchd`, `cron`, and `systemd` recipes via `smartbackup schedule` |
+| 📝 **Detailed Logging** | Persistent single-bar Rich progress display + per-run log file on the backup drive |
 | 🎯 **Minimal Dependencies** | Only `rich` + `typer` — everything else is stdlib |
 
 ---
@@ -107,16 +110,23 @@ smartbackup                                   # backup Documents to the auto-det
 smartbackup --source ~/Projects               # back up a custom folder
 smartbackup --target /media/USB_DRIVE         # back up to an explicit path
 smartbackup --dry-run                         # simulate a backup (no copies, no manifest writes)
+smartbackup --manifest-format sqlite          # store manifest in SQLite (.smartbackup_manifest.db)
+smartbackup --notify                          # send an OS desktop notification when done
 smartbackup --list-drives                     # show available drives
 smartbackup --hash                            # SHA-256 change detection (files ≤ 50 MB)
 smartbackup --target /media/USB --verify      # verify backup integrity against the manifest
 smartbackup --compress zip                    # backup, then archive as zip
 
-smartbackup restore --source /media/USB_DRIVE --list      # inspect a backup
-smartbackup restore --source /media/USB_DRIVE             # restore to original location
+smartbackup restore --source /media/USB_DRIVE --list                  # inspect a backup
+smartbackup restore --source /media/USB_DRIVE --manifest-info         # show manifest summary
+smartbackup restore --source /media/USB_DRIVE --conflict rename       # keep both on conflict
+
+smartbackup config list                       # inspect persistent configuration
+smartbackup config set manifest_format sqlite # persist SQLite as default manifest format
 
 smartbackup watch                             # foreground drive watcher
-smartbackup daemon install                    # background watcher service (status/uninstall)
+smartbackup daemon install                    # background watcher service (status/uninstall/clear-state)
+smartbackup schedule --hours 24               # print OS-specific scheduled backup instructions
 ```
 
 Full explanations, options, and recipes: **[User Guide →](docs/USER_GUIDE.md)**
@@ -149,8 +159,7 @@ Contributions are welcome! Here's how:
 6. Push: `git push origin feature/amazing-feature`
 7. Open a Pull Request
 
-See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for details.
-Architecture deep-dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for details and [CHANGELOG.md](docs/CHANGELOG.md) for release history.
 
 ---
 
