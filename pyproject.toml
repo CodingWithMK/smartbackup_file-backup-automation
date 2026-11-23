@@ -70,8 +70,12 @@ testpaths = ["tests"]
 pythonpath = ["src"]  # Important: Add src to Python path for tests
 addopts = ["-v", "--tb=short"]
 markers = [
-    "slow: marks tests as slow",
+    "unit: fast isolated single-module unit tests",
+    "integration: cross-module and in-process CLI integration tests",
+    "e2e: full end-to-end virtualized workflow tests",
+    "smoke: black-box subprocess smoke tests",
     "sandbox: black-box CLI smoke tests spawned as a subprocess in an isolated sandbox",
+    "slow: marks tests as slow",
 ]
 
 [tool.ruff]
