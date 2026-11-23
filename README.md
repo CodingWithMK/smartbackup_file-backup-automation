@@ -65,9 +65,42 @@ your backups:
 
 ## 🚀 Quick Start
 
+### Option 1 — One-Line Standalone Install (No Python Required)
+
+Install the standalone prebuilt binary directly from [GitHub Releases](https://github.com/CodingWithMK/smartbackup_file-backup-automation/releases) on a fresh machine — no Python, `pip`, or `uv` needed:
+
+**macOS & Linux (`curl`):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/CodingWithMK/smartbackup_file-backup-automation/main/scripts/install.sh | sh
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/CodingWithMK/smartbackup_file-backup-automation/main/scripts/install.ps1 | iex
+```
+
+<details>
+<summary>Pin a specific release version</summary>
+
+```bash
+# macOS / Linux
+SMARTBACKUP_VERSION=v0.8.0 curl -fsSL https://raw.githubusercontent.com/CodingWithMK/smartbackup_file-backup-automation/main/scripts/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+$env:SMARTBACKUP_VERSION = "v0.8.0"; irm https://raw.githubusercontent.com/CodingWithMK/smartbackup_file-backup-automation/main/scripts/install.ps1 | iex
+```
+
+</details>
+
+---
+
+### Option 2 — Run from Source / Python (Developers)
+
 **Requirements:** Python 3.9+ · Windows / macOS / Linux
 
-### Option 1 — Run directly (no installation)
+#### Run directly (no installation)
 
 ```bash
 git clone https://github.com/CodingWithMK/smartbackup_file-backup-automation.git
@@ -76,14 +109,14 @@ cd smartbackup_file-backup-automation
 python main.py            # backs up Documents → auto-detected external drive
 ```
 
-### Option 2 — Install with pip
+#### Install with pip
 
 ```bash
 pip install .
 smartbackup
 ```
 
-### Option 3 — Install with uv (recommended for developers)
+#### Install with uv (recommended for developers)
 
 ```bash
 uv venv
