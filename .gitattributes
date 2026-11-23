@@ -1,0 +1,2 @@
+# Keep shell scripts strictly LF across Windows/macOS/Linux checkouts
+*.sh text eol=lf

@@ -1,0 +1,289 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and publish (e.g. v0.9.0 or v1.0.0-rc.1)"
+        required: true
+        type: string
+
+jobs:
+  verify:
+    name: Verify tests and version parity
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+
+    steps:
+      - name: Resolve release tag metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+
+          if [[ "$TAG" != v* ]]; then
+            echo "Error: Release tag '$TAG' must start with 'v' (e.g. v0.9.0)." >&2
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          if [[ "$TAG" == *-* ]]; then
+            PRERELEASE="true"
+          else
+            PRERELEASE="false"
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package and dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Verify tag version matches pyproject.toml and package __version__
+        env:
+          EXPECTED_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          import smartbackup
+          from smartbackup import cli
+
+          expected = os.environ["EXPECTED_VERSION"]
+          pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          toml_version = pyproject["project"]["version"]
+          pkg_version = smartbackup.__version__
+          cli_version = cli.__version__
+
+          mismatches = []
+          if toml_version != expected:
+              mismatches.append(f"pyproject.toml={toml_version!r}")
+          if pkg_version != expected:
+              mismatches.append(f"smartbackup.__version__={pkg_version!r}")
+          if cli_version != expected:
+              mismatches.append(f"smartbackup.cli.__version__={cli_version!r}")
+
+          if mismatches:
+              print(
+                  f"Version mismatch for tag v{expected}: " + ", ".join(mismatches),
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          print(f"Verified version parity: {expected}")
+          PY
+
+      - name: Run Ruff lint checks
+        run: ruff check src/ tests/
+
+      - name: Run pytest suite
+        env:
+          PYTHONUTF8: "1"
+        run: pytest -v
+
+  build-binaries:
+    name: Build binary (${{ matrix.os }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            ext: ""
+          - os: macos-latest
+            platform: macos
+            ext: ""
+          - os: windows-latest
+            platform: windows
+            ext: ".exe"
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install . pyinstaller
+
+      - name: Determine target binary name
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLATFORM="${{ matrix.platform }}"
+          EXT="${{ matrix.ext }}"
+          if [ "$PLATFORM" = "windows" ]; then
+            ARCH="x86_64"
+          else
+            RAW_ARCH="$(uname -m)"
+            case "$RAW_ARCH" in
+              x86_64|amd64) ARCH="x86_64" ;;
+              arm64|aarch64)
+                if [ "$PLATFORM" = "macos" ]; then
+                  ARCH="arm64"
+                else
+                  ARCH="aarch64"
+                fi
+                ;;
+              *)
+                echo "Unsupported runner architecture: $RAW_ARCH" >&2
+                exit 1
+                ;;
+            esac
+          fi
+          ASSET_NAME="smartbackup-${PLATFORM}-${ARCH}${EXT}"
+          echo "asset_name=$ASSET_NAME" >> "$GITHUB_OUTPUT"
+          echo "Target asset: $ASSET_NAME"
+
+      - name: Build standalone single-file binary
+        shell: bash
+        run: |
+          python -m PyInstaller --onefile --clean --noconfirm \
+            --specpath build \
+            --name smartbackup \
+            --collect-submodules smartbackup \
+            --collect-submodules rich._unicode_data \
+            main.py
+
+      - name: Rename binary to release asset name
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="dist/smartbackup${{ matrix.ext }}"
+          DEST="dist/${{ steps.target.outputs.asset_name }}"
+          mv "$SRC" "$DEST"
+          ls -lh "$DEST"
+
+      - name: Smoke test standalone binary
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ needs.verify.outputs.version }}
+          ASSET_NAME: ${{ steps.target.outputs.asset_name }}
+        run: |
+          set -euo pipefail
+          BIN_PATH="$(pwd)/dist/${ASSET_NAME}"
+          SANDBOX="$(mktemp -d)"
+          trap 'rm -rf "$SANDBOX"' EXIT
+
+          # Isolate config & execute from outside repo to simulate a blank machine
+          mkdir -p "$SANDBOX/src" "$SANDBOX/tgt" "$SANDBOX/restored" "$SANDBOX/home" "$SANDBOX/appdata"
+          printf "standalone-ok" > "$SANDBOX/src/hello.txt"
+
+          if command -v cygpath >/dev/null 2>&1; then
+            NATIVE_SANDBOX="$(cygpath -w "$SANDBOX")"
+            export APPDATA="${NATIVE_SANDBOX}\\appdata"
+            SRC_ARG="${NATIVE_SANDBOX}\\src"
+            TGT_ARG="${NATIVE_SANDBOX}\\tgt"
+            RESTORED_ARG="${NATIVE_SANDBOX}\\restored"
+          else
+            export HOME="$SANDBOX/home"
+            SRC_ARG="$SANDBOX/src"
+            TGT_ARG="$SANDBOX/tgt"
+            RESTORED_ARG="$SANDBOX/restored"
+          fi
+
+          cd "$SANDBOX"
+
+          VERSION_OUT="$("$BIN_PATH" --version)"
+          echo "$VERSION_OUT"
+          echo "$VERSION_OUT" | grep -F "$EXPECTED_VERSION"
+
+          HELP_OUT="$("$BIN_PATH" --help)"
+          echo "$HELP_OUT" | grep -F -- "--dry-run"
+          echo "$HELP_OUT" | grep -F -- "--manifest-format"
+
+          "$BIN_PATH" --source "$SRC_ARG" --target "$TGT_ARG" --device-name SmokeBox
+          "$BIN_PATH" --verify --target "$TGT_ARG" --device-name SmokeBox
+          "$BIN_PATH" restore --source "$TGT_ARG" --target "$RESTORED_ARG" --device-name SmokeBox
+          grep -F "standalone-ok" "$SANDBOX/restored/hello.txt"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.target.outputs.asset_name }}
+          path: dist/${{ steps.target.outputs.asset_name }}
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs:
+      - verify
+      - build-binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS.txt
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum smartbackup-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Stage installer scripts alongside release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp scripts/install.sh release-assets/install.sh
+          cp scripts/install.ps1 release-assets/install.ps1
+          ls -lh release-assets/
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.verify.outputs.tag }}
+          prerelease: ${{ needs.verify.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          files: release-assets/*
