@@ -13,7 +13,7 @@ from typing import Optional
 from smartbackup.config import BackupConfig
 from smartbackup.core.detector import ChangeDetector
 from smartbackup.core.scanner import ExclusionFilter, FileScanner
-from smartbackup.manifest.base import Manifest, ManifestManager
+from smartbackup.manifest.base import Manifest, ManifestManager, SelectiveBackupRecord
 from smartbackup.manifest.factory import (
     detect_manifest_manager,
     get_manifest_manager,
@@ -42,7 +42,11 @@ class BackupEngine:
     def __init__(self, config: BackupConfig, logger: BackupLogger):
         self.config = config
         self.logger = logger
-        self.result = BackupResult()
+        self.result = BackupResult(
+            backup_mode=config.backup_mode,
+            selected_folders=list(config.selected_folders or []),
+            selection_metadata=config.selection_metadata,
+        )
         self._lock = threading.Lock()
         self._bytes_copied = 0
         self._files_processed = 0
@@ -56,7 +60,12 @@ class BackupEngine:
 
     def run_backup(self) -> BackupResult:
         """Performs the complete backup."""
-        self.result = BackupResult(start_time=datetime.now())
+        self.result = BackupResult(
+            start_time=datetime.now(),
+            backup_mode=self.config.backup_mode,
+            selected_folders=list(self.config.selected_folders or []),
+            selection_metadata=self.config.selection_metadata,
+        )
         self._backed_up_files = []
 
         try:
@@ -92,7 +101,8 @@ class BackupEngine:
                 backup_target = backup_root / self.config.device_name
             else:
                 backup_target = backup_root
-            backup_target.mkdir(parents=True, exist_ok=True)
+            if not self.is_dry_run:
+                backup_target.mkdir(parents=True, exist_ok=True)
             self._backup_target = backup_target
 
             # 4. Initialize manifest if enabled
@@ -130,15 +140,31 @@ class BackupEngine:
                 )
 
             # 5. Scan source files
-            source_files = scanner.scan(self.config.source_path)
+            scoped_folders: Optional[list[str]] = (
+                list(self.config.selected_folders)
+                if self.config.backup_mode == "select" and self.config.selected_folders is not None
+                else None
+            )
+            source_files = scanner.scan(
+                self.config.source_path, include_folders=scoped_folders
+            )
+            if scoped_folders is not None:
+                self._record_workflow_step(
+                    f"Scoped scan completed across {len(scoped_folders)} selected "
+                    f"folder(s): {len(source_files)} file(s) found"
+                )
 
-            if not source_files:
+            if not source_files and not self._has_existing_scoped_entries(
+                backup_target, scoped_folders
+            ):
                 self.logger.warning("No files found for backup!")
                 return self.result
 
             # 6. Detect changes - use manifest if available for faster detection
             if self.config.use_manifest and self._manifest_manager and self._manifest:
-                diff = self._manifest_manager.diff(source_files, self._manifest)
+                diff = self._manifest_manager.diff(
+                    source_files, self._manifest, scoped_folders=scoped_folders
+                )
                 new_files = diff.new_files
                 modified_files = diff.modified_files
                 deleted_paths = diff.deleted_paths
@@ -147,9 +173,19 @@ class BackupEngine:
                 # Fall back to traditional change detection
                 change_detector = ChangeDetector(self.config.use_hash_verification)
                 new_files, modified_files, deleted_files = change_detector.detect_changes(
-                    source_files, backup_target, self.logger
+                    source_files,
+                    backup_target,
+                    self.logger,
+                    scoped_folders=scoped_folders,
                 )
                 deleted_paths = [str(p) for p in deleted_files] if deleted_files else []
+
+            if scoped_folders is not None:
+                self._record_workflow_step(
+                    f"Scoped diff completed: +{len(new_files)} new, "
+                    f"~{len(modified_files)} modified, -{len(deleted_paths)} deleted "
+                    "(unselected folders untouched)"
+                )
 
             # 7. Calculate total sizes
             self._total_files = len(new_files) + len(modified_files)
@@ -179,6 +215,14 @@ class BackupEngine:
             # Count skipped
             self.result.skipped_files = len(source_files) - len(new_files) - len(modified_files)
 
+            if scoped_folders is not None:
+                phase_label = "Dry-run simulation" if self.is_dry_run else "Backup execution"
+                self._record_workflow_step(
+                    f"{phase_label} finished: {self.result.copied_files} copied, "
+                    f"{self.result.updated_files} updated, {self.result.deleted_files} deleted, "
+                    f"{self.result.skipped_files} skipped"
+                )
+
             # 9. Update manifest with backed up files. Skipped during dry-run:
             #    simulated copies/deletes must never advance manifest state,
             #    otherwise a later real run would wrongly skip those files.
@@ -189,6 +233,40 @@ class BackupEngine:
                 self._manifest = self._manifest_manager.update_from_backup(
                     self._manifest, self._backed_up_files, deleted_paths=deleted_paths
                 )
+                if self.config.backup_mode == "select" and scoped_folders is not None:
+                    now = datetime.now()
+                    run_id = f"{now:%Y%m%d_%H%M%S}_#{self._manifest.backup_count}"
+                    meta = self.config.selection_metadata
+                    self._record_workflow_step(
+                        f"Manifest ({self._manifest_manager.FORMAT.value}) updated "
+                        f"with SelectiveBackupRecord {run_id}"
+                    )
+                    record = SelectiveBackupRecord(
+                        run_id=run_id,
+                        timestamp=now,
+                        command_option=meta.command_option if meta else "--select",
+                        scope="folders",
+                        source_root=(
+                            meta.source_root if meta and meta.source_root else str(self.config.source_path)
+                        ),
+                        selected_folders=list(scoped_folders),
+                        available_folders_count=(
+                            len(meta.available_folders) if meta else len(scoped_folders)
+                        ),
+                        files_scanned=self.result.total_files,
+                        files_copied=self.result.copied_files,
+                        files_updated=self.result.updated_files,
+                        files_deleted=self.result.deleted_files,
+                        files_skipped=self.result.skipped_files,
+                        bytes_copied=self.result.copied_size,
+                        duration_seconds=round(self.result.duration, 2),
+                        workflow_steps=list(meta.workflow_steps) if meta else [],
+                    )
+                    self._manifest.add_selective_backup(record)
+                else:
+                    self._manifest.last_backup_mode = "full"
+                    self._manifest.last_selected_folders = []
+
                 if self._manifest_manager.save(self._manifest):
                     if (
                         self._migrated_from_manifest_path is not None
@@ -233,17 +311,47 @@ class BackupEngine:
             self.logger.stop_progress()
             self.result.end_time = datetime.now()
 
-            # Write log file. Logging is best-effort: a vanished or unwritable
-            # medium must not turn a handled failure into an uncaught
-            # exception (the CLI would lose the summary), nor may it recreate
-            # a target directory that failed validation.
-            if self.config.log_to_file:
+            # Write log file (skipped during dry-run to guarantee zero target writes).
+            # Logging is best-effort: a vanished or unwritable medium must not turn
+            # a handled failure into an uncaught exception, nor recreate a target
+            # directory that failed validation.
+            if self.config.log_to_file and not self.is_dry_run:
                 try:
                     self._write_log_file()
                 except OSError as e:
                     self.logger.warning(f"Could not write log file: {e}")
 
         return self.result
+
+    def _record_workflow_step(self, step: str) -> None:
+        """Append a workflow step to selection_metadata when tracing --select runs."""
+        if self.config.selection_metadata is not None:
+            self.config.selection_metadata.workflow_steps.append(step)
+
+    def _has_existing_scoped_entries(
+        self,
+        backup_target: Path,
+        scoped_folders: Optional[list[str]],
+    ) -> bool:
+        """Check whether any previously backed-up files exist within selected folders."""
+        if not scoped_folders:
+            return False
+
+        scoped_set = set(scoped_folders)
+        if self.config.use_manifest and self._manifest is not None:
+            for rel_path in self._manifest.entries:
+                parts = Path(rel_path.replace("\\", "/")).parts
+                if len(parts) >= 2 and parts[0] in scoped_set:
+                    return True
+            return False
+
+        if backup_target.exists():
+            for folder_name in scoped_folders:
+                folder_backup = backup_target / folder_name
+                if folder_backup.exists() and folder_backup.is_dir():
+                    if any(p.is_file() for p in folder_backup.rglob("*")):
+                        return True
+        return False
 
     def _migrate_legacy_layout(self, backup_root: Path) -> None:
         """Migrate legacy flat layout to per-device subfolder structure.
@@ -455,6 +563,55 @@ class BackupEngine:
 
         self.logger.log_file = log_file
 
+        mode_label = (
+            "Selective (--select)" if self.config.backup_mode == "select" else "Full"
+        )
+
+        selective_section = ""
+        if self.config.backup_mode == "select":
+            meta = self.config.selection_metadata
+            selected_list = list(self.config.selected_folders or [])
+            available_count = (
+                len(meta.available_folders) if meta else len(selected_list)
+            )
+            excluded_count = meta.excluded_folders_count if meta else 0
+            source_root = (
+                meta.source_root if meta and meta.source_root else str(self.config.source_path)
+            )
+            selected_at_str = (
+                meta.selected_at.strftime("%Y-%m-%d %H:%M:%S")
+                if meta
+                else self.result.start_time.strftime("%Y-%m-%d %H:%M:%S")
+            )
+            command_opt = meta.command_option if meta else "--select"
+            workflow_steps = list(meta.workflow_steps) if meta else []
+
+            folder_lines = "\n".join(f"    [x] {name}/" for name in selected_list) or "    (none)"
+            if workflow_steps:
+                trace_lines = "\n".join(
+                    f"    {idx}. {step}" for idx, step in enumerate(workflow_steps, start=1)
+                )
+            else:
+                trace_lines = "    1. Selective backup executed"
+
+            selective_section = (
+                f"\n{'=' * 70}\n"
+                f"                SELECTIVE BACKUP ({command_opt})\n"
+                f"{'=' * 70}\n"
+                f"  Command Option:    {command_opt}\n"
+                f"  Scope:             folders (top-level only)\n"
+                f"  Source Root:       {source_root}\n"
+                f"  Available Folders: {available_count}\n"
+                f"  Selected Folders:  {len(selected_list)} of {available_count}\n"
+                f"  Excluded Folders:  {excluded_count}\n"
+                f"  Selected At:       {selected_at_str}\n\n"
+                f"  Selected Folder List:\n"
+                f"{folder_lines}\n\n"
+                f"  SELECTIVE WORKFLOW TRACE:\n"
+                f"{trace_lines}\n"
+                f"{'=' * 70}\n"
+            )
+
         # Write header
         with open(log_file, "w", encoding="utf-8") as f:
             f.write(
@@ -466,8 +623,9 @@ class BackupEngine:
 CONFIGURATION:
   Source:     {self.config.source_path}
   Target:     {self._backup_target or (self.config.backup_path / self.config.backup_folder_name)}
+  Mode:       {mode_label}
   Timestamp:  {self.result.start_time.strftime("%Y-%m-%d %H:%M:%S")}
-
+{selective_section}
 SUMMARY:
   Total Files:            {self.result.total_files}
   Copied Files:           {self.result.copied_files}
@@ -509,8 +667,9 @@ SUMMARY:
 class DryRunBackupEngine(BackupEngine):
     """
     Backup engine for simulation mode.
-    Performs all analyses but does not copy files or persist any state
-    (no manifest writes, no layout migration, no archives).
+    Performs all analyses without writing anything to the target drive
+    (no directories created, no files copied/deleted, no manifest writes,
+    no layout migration, no archives, and no log files).
     """
 
     is_dry_run = True

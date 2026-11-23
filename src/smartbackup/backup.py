@@ -14,6 +14,7 @@ from rich.text import Text
 from smartbackup.config import DEFAULT_EXCLUSIONS, BackupConfig
 from smartbackup.core.engine import BackupEngine, DryRunBackupEngine
 from smartbackup.handlers import FallbackHandler
+from smartbackup.models import SelectionMetadata
 from smartbackup.platform.devices import DeviceDetector
 from smartbackup.platform.identity import get_device_name
 from smartbackup.platform.resolver import PathResolver
@@ -41,6 +42,8 @@ class SmartBackup:
         exclusions: Optional[set[str]] = None,
         manifest_format: str = "json",
         notify: bool = False,
+        selected_folders: Optional[list[str]] = None,
+        selection_metadata: Optional[SelectionMetadata] = None,
     ) -> bool:
         """
         Executes the backup.
@@ -101,6 +104,7 @@ class SmartBackup:
             return False
 
         # Create configuration
+        backup_mode = "select" if selected_folders is not None else "full"
         config = BackupConfig(
             source_path=source_path,
             backup_path=backup_path,
@@ -114,6 +118,9 @@ class SmartBackup:
             use_manifest=use_manifest,
             manifest_format=manifest_format,
             compress_format=compress_format,
+            backup_mode=backup_mode,
+            selected_folders=selected_folders,
+            selection_metadata=selection_metadata,
         )
 
         # Perform backup

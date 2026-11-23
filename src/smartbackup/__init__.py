@@ -37,12 +37,13 @@ from smartbackup.manifest import (
     ManifestEntry,
     ManifestFormat,
     ManifestManager,
+    SelectiveBackupRecord,
     SqliteManifestManager,
     detect_manifest_manager,
     get_manifest_manager,
     has_manifest,
 )
-from smartbackup.models import BackupResult, FileAction, FileInfo
+from smartbackup.models import BackupResult, FileAction, FileInfo, SelectionMetadata
 from smartbackup.platform.devices import DeviceDetector
 from smartbackup.platform.identity import get_device_name
 from smartbackup.platform.resolver import PathResolver
@@ -51,6 +52,7 @@ from smartbackup.platform.terminal import TerminalSpawner
 from smartbackup.platform.watcher import DebounceLock, DeviceWatcher, DriveMatcher
 from smartbackup.ui.colors import Colors
 from smartbackup.ui.logger import BackupLogger
+from smartbackup.ui.selector import FolderItem, FolderSelector, KeyAction
 
 __all__ = [
     # Version info
@@ -68,6 +70,7 @@ __all__ = [
     "BackupResult",
     "FileInfo",
     "FileAction",
+    "SelectionMetadata",
     # Core components
     "BackupEngine",
     "DryRunBackupEngine",
@@ -84,6 +87,7 @@ __all__ = [
     "ManifestDiff",
     "ManifestFormat",
     "ManifestManager",
+    "SelectiveBackupRecord",
     "JsonManifestManager",
     "SqliteManifestManager",
     "get_manifest_manager",
@@ -101,6 +105,9 @@ __all__ = [
     # UI
     "BackupLogger",
     "Colors",
+    "FolderItem",
+    "FolderSelector",
+    "KeyAction",
     # Handlers
     "FallbackHandler",
     # Entry point

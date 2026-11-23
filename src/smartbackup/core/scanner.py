@@ -6,6 +6,7 @@ import hashlib
 import os
 import re
 from pathlib import Path
+from typing import Optional
 
 from smartbackup.models import FileInfo
 from smartbackup.ui.logger import BackupLogger
@@ -106,28 +107,52 @@ class FileScanner:
         self._scan_count = 0
         self._excluded_count = 0
 
-    def scan(self, base_path: Path) -> dict[Path, FileInfo]:
+    def scan(
+        self,
+        base_path: Path,
+        include_folders: Optional[list[str]] = None,
+    ) -> dict[Path, FileInfo]:
         """
         Scans a directory recursively.
 
         Args:
             base_path: Base directory to scan
+            include_folders: Optional list of top-level folder names under
+                ``base_path`` to restrict scanning to (used by ``--select``).
+                All collected ``FileInfo.relative_path`` values remain relative
+                to ``base_path``.
 
         Returns:
             Dictionary with relative paths as keys and FileInfo as values
         """
-        self.logger.section(f"Scanning source directory: {base_path}")
         self._scan_count = 0
         self._excluded_count = 0
 
         files: dict[Path, FileInfo] = {}
 
-        try:
-            self._scan_recursive(base_path, base_path, files)
-        except PermissionError as e:
-            self.logger.error(f"Permission denied: {e}")
-        except Exception as e:
-            self.logger.error(f"Scan error: {e}")
+        if include_folders is not None:
+            self.logger.section(
+                f"Scanning selected folders ({len(include_folders)}) in: {base_path}"
+            )
+            for folder_name in include_folders:
+                folder_path = base_path / folder_name
+                if not folder_path.exists() or not folder_path.is_dir():
+                    self.logger.warning(f"Selected folder not found, skipping: {folder_name}")
+                    continue
+                try:
+                    self._scan_recursive(folder_path, base_path, files)
+                except PermissionError as e:
+                    self.logger.error(f"Permission denied: {e}")
+                except Exception as e:
+                    self.logger.error(f"Scan error in '{folder_name}': {e}")
+        else:
+            self.logger.section(f"Scanning source directory: {base_path}")
+            try:
+                self._scan_recursive(base_path, base_path, files)
+            except PermissionError as e:
+                self.logger.error(f"Permission denied: {e}")
+            except Exception as e:
+                self.logger.error(f"Scan error: {e}")
 
         self.logger.info(
             f"Scan completed: {self._scan_count} files found, {self._excluded_count} excluded"

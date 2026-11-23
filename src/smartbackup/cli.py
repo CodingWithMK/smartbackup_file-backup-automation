@@ -5,33 +5,43 @@ Modernised with Typer and Rich for a polished developer experience.
 """
 
 import shutil
+import sys
 import time
 from pathlib import Path
 from typing import Optional
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 
 from smartbackup.backup import SmartBackup
-from smartbackup.config import ConfigManager
+from smartbackup.config import EXCLUDED_EXTENSIONS, ConfigManager
+from smartbackup.core.scanner import ExclusionFilter
 from smartbackup.manifest.factory import (
     SUPPORTED_MANIFEST_FORMATS,
     get_manifest_manager,
     has_manifest,
 )
+from smartbackup.models import SelectionMetadata
 from smartbackup.platform.identity import get_device_name, sanitize_device_name
 from smartbackup.platform.resolver import PathResolver
 from smartbackup.platform.scheduler import SchedulerHelper
 from smartbackup.platform.terminal import TerminalSpawner
 from smartbackup.platform.watcher import DeviceWatcher
 from smartbackup.ui.logger import BackupLogger
+from smartbackup.ui.selector import FolderSelector
 
 __version__ = "0.8.0"
 
 console = Console(highlight=False)
+
+
+def _is_interactive_tty() -> bool:
+    """Return True when both stdin and stdout are attached to an interactive TTY."""
+    return bool(sys.stdin.isatty() and sys.stdout.isatty())
 
 app = typer.Typer(
     name="smartbackup",
@@ -206,11 +216,54 @@ def _show_manifest(
     table.add_row("Created", manifest.created.strftime("%Y-%m-%d %H:%M:%S"))
     table.add_row("Updated", manifest.updated.strftime("%Y-%m-%d %H:%M:%S"))
     table.add_row("Backup Count", str(manifest.backup_count))
+    mode_label = (
+        "[bold cyan]Selective (--select)[/bold cyan]"
+        if manifest.last_backup_mode == "select"
+        else "Full"
+    )
+    table.add_row("Last Backup Mode", mode_label)
+    if manifest.last_backup_mode == "select" and manifest.last_selected_folders:
+        table.add_row(
+            "Last Selected Folders",
+            escape(", ".join(manifest.last_selected_folders)),
+        )
     table.add_row("Total Files", f"{manifest.total_files:,}")
     table.add_row("Total Size", f"{manifest.total_size / (1024 * 1024):.2f} MB")
 
     console.print()
     console.print(table)
+
+    if manifest.selective_backups:
+        sel_table = Table(
+            title="Selective Backup History (--select)",
+            title_style="bold cyan",
+            border_style="cyan",
+            show_header=True,
+            expand=False,
+            padding=(0, 1),
+        )
+        sel_table.add_column("Run ID", style="bold")
+        sel_table.add_column("Timestamp")
+        sel_table.add_column("Folders")
+        sel_table.add_column("Copied", justify="right", style="green")
+        sel_table.add_column("Updated", justify="right", style="blue")
+        sel_table.add_column("Deleted", justify="right", style="yellow")
+        sel_table.add_column("Duration", justify="right")
+
+        for rec in manifest.selective_backups:
+            sel_table.add_row(
+                escape(rec.run_id),
+                rec.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                escape(", ".join(rec.selected_folders)),
+                str(rec.files_copied),
+                str(rec.files_updated),
+                str(rec.files_deleted),
+                f"{rec.duration_seconds:.1f}s",
+            )
+
+        console.print()
+        console.print(sel_table)
+
     console.print()
 
 
@@ -718,6 +771,11 @@ def backup_cmd(
     prompt: bool = typer.Option(
         False, "--prompt", help="Run interactive prompt mode for detected drive"
     ),
+    select: bool = typer.Option(
+        False,
+        "--select",
+        help="Interactively select specific top-level folders from source to back up",
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Simulate backup without copying files"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Minimal output"),
     exclude: Optional[list[str]] = typer.Option(
@@ -927,6 +985,59 @@ def backup_cmd(
         )
         raise typer.Exit(code=1)
 
+    # --- Interactive Selective Folder Backup (--select) ---
+    selected_folders: Optional[list[str]] = None
+    selection_metadata: Optional[SelectionMetadata] = None
+    if select:
+        if not _is_interactive_tty():
+            logger.error(
+                "The --select option requires an interactive terminal (TTY). "
+                "Run SmartBackup in an interactive shell or omit --select."
+            )
+            raise typer.Exit(code=1)
+
+        resolved_source = source if source is not None else PathResolver.get_documents_path()
+        if not resolved_source.exists() or not resolved_source.is_dir():
+            logger.error(
+                f"Source directory does not exist or is not a directory: {resolved_source}"
+            )
+            raise typer.Exit(code=1)
+
+        # Best-effort lookup of previously backed-up top-level folders for UI badges
+        previously_backed_up: set[str] = set()
+        if target is not None:
+            try:
+                backup_root = target / "Documents-Backup"
+                resolved_dev = device_name or get_device_name()
+                candidate_dir = backup_root / resolved_dev
+                if candidate_dir.exists():
+                    existing_mgr = get_manifest_manager(candidate_dir)
+                    existing_manifest = existing_mgr.load() if existing_mgr.exists() else None
+                    if existing_manifest is not None:
+                        for rel_path in existing_manifest.entries:
+                            parts = Path(rel_path.replace("\\", "/")).parts
+                            if len(parts) >= 2:
+                                previously_backed_up.add(parts[0])
+            except Exception:
+                pass
+
+        selector = FolderSelector(
+            source_path=resolved_source,
+            exclusion_filter=ExclusionFilter(merged_exclusions, EXCLUDED_EXTENSIONS),
+            console=console,
+            previously_backed_up=previously_backed_up,
+        )
+        selection_metadata = selector.select()
+        if selection_metadata is None:
+            console.print("[yellow]Selective backup cancelled.[/yellow]")
+            raise typer.Exit(code=0)
+
+        selected_folders = list(selection_metadata.selected_folders)
+        logger.info(
+            f"Selective mode (--select): {len(selected_folders)} folder(s) selected "
+            f"({', '.join(selected_folders)})"
+        )
+
     # Execute backup
     try:
         if dry_run:
@@ -951,6 +1062,8 @@ def backup_cmd(
             exclusions=merged_exclusions,
             manifest_format=resolved_manifest_format,
             notify=notify,
+            selected_folders=selected_folders,
+            selection_metadata=selection_metadata,
         )
 
         if prompt:

@@ -3,6 +3,7 @@ ChangeDetector - Detects changes between source and target files.
 """
 
 from pathlib import Path
+from typing import Optional
 
 from smartbackup.models import FileInfo
 from smartbackup.ui.logger import BackupLogger
@@ -26,9 +27,18 @@ class ChangeDetector:
         source_files: dict[Path, FileInfo],
         backup_path: Path,
         logger: BackupLogger,
+        scoped_folders: Optional[list[str]] = None,
     ) -> tuple[list[FileInfo], list[FileInfo], list[Path]]:
         """
         Compares source and backup files.
+
+        Args:
+            source_files: Mapping of root-relative paths to source FileInfo.
+            backup_path: Target backup root directory.
+            logger: Logger for progress/info messages.
+            scoped_folders: Optional list of top-level folder names to scope
+                deletion detection to (used by ``--select``). Backup files
+                outside these folders are never marked for deletion.
 
         Returns:
             Tuple of (new_files, modified_files, files_to_delete)
@@ -39,13 +49,22 @@ class ChangeDetector:
         modified_files: list[FileInfo] = []
         deleted_files: list[Path] = []
 
-        # Scan existing backup files
+        # Scan existing backup files (scoped to selected folders if provided)
         existing_backup_files: set[Path] = set()
         if backup_path.exists():
-            for path in backup_path.rglob("*"):
-                if path.is_file():
-                    relative = path.relative_to(backup_path)
-                    existing_backup_files.add(relative)
+            if scoped_folders is not None:
+                for folder_name in scoped_folders:
+                    folder_backup_path = backup_path / folder_name
+                    if folder_backup_path.exists() and folder_backup_path.is_dir():
+                        for path in folder_backup_path.rglob("*"):
+                            if path.is_file():
+                                relative = path.relative_to(backup_path)
+                                existing_backup_files.add(relative)
+            else:
+                for path in backup_path.rglob("*"):
+                    if path.is_file():
+                        relative = path.relative_to(backup_path)
+                        existing_backup_files.add(relative)
 
         # Compare source files with backup
         for relative_path, source_info in source_files.items():

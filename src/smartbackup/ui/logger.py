@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -252,6 +253,16 @@ class BackupLogger:
         )
         table.add_column("Metric", style="bold")
         table.add_column("Value", justify="right")
+
+        if result.backup_mode == "select":
+            table.add_row("Backup Mode", "[bold cyan]Selective (--select)[/bold cyan]")
+            folders = result.selected_folders
+            if len(folders) <= 5:
+                folders_str = ", ".join(folders) if folders else "(none)"
+            else:
+                folders_str = f"{', '.join(folders[:5])} (+{len(folders) - 5} more)"
+            table.add_row("Selected Folders", escape(folders_str))
+            table.add_row("", "")
 
         table.add_row("[green]Copied Files[/green]", str(result.copied_files))
         table.add_row("[blue]Updated Files[/blue]", str(result.updated_files))
