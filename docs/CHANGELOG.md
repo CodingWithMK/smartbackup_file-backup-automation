@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-11-24
+
+### Added
+- **Interactive Selective Folder Backup (`--select`)**:
+  - Added zero-dependency keyboard-driven TUI (`smartbackup.ui.selector.FolderSelector`) using
+    `rich` + Python stdlib (`msvcrt` on Windows; `termios` + `tty` + `select` on POSIX with
+    50ms Escape disambiguation and guaranteed `try...finally` terminal restoration).
+  - Supports `↑`/`↓` (and `k`/`j`) navigation, `Space` toggle, `a` select/deselect all,
+    `Enter` confirm (with inline validation when 0 folders are checked), `Esc`/`q` cancel,
+    viewport scrolling for large directories, `rich.markup.escape()` markup safety, and
+    automatic ASCII glyph fallback on legacy Windows `cp1252` consoles.
+  - Preserves root-relative paths (`FileScanner.scan(..., include_folders=...)`) for full
+    compatibility with standard backups and `RestoreEngine`.
+  - Guarantees **unselected-folder and loose-root-file immunity** across `ManifestManager.diff()`,
+    `ChangeDetector.detect_changes()`, and emptied-selected-folder deletion syncing.
+  - Added dedicated audit tracking:
+    - `SelectionMetadata` model and `SelectiveBackupRecord` manifest history.
+    - JSON manifest (`last_backup_mode`, `last_selected_folders`, `selective_backups`) and a
+      dedicated normalized **`selective_backups` SQLite table** separating selective backup
+      history from `files`/`metadata` (100% backward compatible with legacy manifests and
+      preserved across JSON ↔ SQLite format migrations).
+    - Dedicated `SELECTIVE BACKUP (--select)` and `SELECTIVE WORKFLOW TRACE` sections written
+      before `SUMMARY:` in per-run backup log files.
+    - `Backup Mode` / `Selected Folders` rows in `BackupLogger.summary()` and a
+      `Selective Backup History (--select)` Rich table in `--show-manifest`.
+  - Enforces fail-fast exit code `1` when `--select` is invoked in a non-TTY environment.
+
+### Changed
+- **Global zero-write `--dry-run` isolation**:
+  - Neither full `--dry-run` nor `--select --dry-run` creates target directories or writes
+    `.log` files on the backup medium, ensuring complete zero-write dry-run simulation.
+
 ## [0.8.0] - 2026-11-23
 
 ### Added

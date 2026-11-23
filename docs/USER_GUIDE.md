@@ -1,6 +1,6 @@
 # SmartBackup User Guide
 
-**Version tested against: `smartbackup 0.8.0`** · Platforms: Windows · macOS · Linux · Python 3.9+
+**Version tested against: `smartbackup 0.9.0`** · Platforms: Windows · macOS · Linux · Python 3.9+
 
 This guide is the single source of truth for using SmartBackup. Every command, flag, default
 value, file path, and behavior documented here was taken from (or verified against) the
@@ -105,7 +105,7 @@ uv pip install -e ".[dev]"
 
 ```bash
 smartbackup --version
-# smartbackup 0.8.0
+# smartbackup 0.9.0
 
 smartbackup --help          # full option list (shown for every command/subcommand too)
 ```
@@ -166,11 +166,12 @@ The manifest records, per file: `hash` (SHA-256, optional), `size`, `mtime`,
   (a rebuilt manifest treats every file as new, so the next run re-copies everything — safe,
   just slower).
 
-**Dry-run is read-only with respect to backup state.** `--dry-run` simulates the scan and
-diff, prints what *would* happen, and writes the run log — but it never creates or updates
-`.smartbackup_manifest.json`, never migrates a legacy folder layout, and never creates a
-compression archive. You can safely run a dry-run immediately before a real backup: the
-real run still sees every pending change and copies it.
+**Dry-run is strictly zero-write.** `--dry-run` (both full and `--select --dry-run`) simulates
+the scan and diff and prints what *would* happen — without creating target directories, copying
+or deleting files, creating or updating manifests (`.smartbackup_manifest.json` /
+`.smartbackup_manifest.db`), migrating legacy layouts, creating compression archives, or writing
+`.log` files. You can safely run a dry-run immediately before a real backup: the target medium
+remains completely untouched and the subsequent real run sees every pending change.
 
 ### 3.2 Automatic External Drive Detection
 
@@ -274,6 +275,48 @@ Four tiers are checked for every scanned entry (first match wins), matched again
 The full built-in list is in [Appendix B](#b-default-exclusions). Custom rules are covered
 in [§7](#7-configuration--custom-exclusions).
 
+### 3.6 Interactive Selective Folder Backup (`--select`)
+
+When you only want to back up a subset of top-level folders from your `Documents` (or `--source`)
+directory, pass `--select`:
+
+```bash
+smartbackup --select
+smartbackup --select --source ~/Documents --target /media/USB_DRIVE
+smartbackup --select --dry-run                 # pick folders and preview with zero disk writes
+smartbackup --select --manifest-format sqlite  # record selective history in SQLite
+```
+
+**Interactive keyboard controls** (zero extra dependencies — uses `rich` + stdlib):
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` (or `k` / `j`) | Move cursor (viewport scrolls automatically for large folder lists) |
+| `Space` | Toggle checkbox for the highlighted folder |
+| `a` | Toggle all / none |
+| `Enter` | Confirm selection (requires at least 1 folder checked) |
+| `Esc` / `q` / `Ctrl+C` | Cancel cleanly (exit code `0`, no backup run) |
+
+**Guarantees and audit trail:**
+
+- **Folders only, root-relative paths:** `--select` lists non-hidden, non-excluded top-level
+  subdirectories and mirrors them under `Documents-Backup/<Device>/<Folder>/...` (root-relative),
+  so selective backups stay 100% compatible with full backups and `smartbackup restore`.
+- **Unselected-folder & loose-root-file immunity:** Files in folders you did *not* select (and
+  loose files at the source root) are never reported as deleted and never modified or removed
+  from the backup drive — across JSON manifests, SQLite manifests, and `--no-manifest`.
+- **Dedicated log & manifest sections:**
+  - Backup logs include `Mode: Selective (--select)` plus a dedicated
+    `SELECTIVE BACKUP (--select)` block and numbered `SELECTIVE WORKFLOW TRACE` immediately
+    before `SUMMARY:`.
+  - JSON manifests record `last_backup_mode`, `last_selected_folders`, and a `selective_backups`
+    array; SQLite manifests store selective history in a dedicated **`selective_backups` table**
+    separated from `files` and `metadata` (preserved across JSON ↔ SQLite migrations).
+  - `smartbackup --show-manifest --target <path>` displays `Last Backup Mode` and a
+    `Selective Backup History (--select)` table.
+- **Interactive TTY required:** Invoking `--select` in a non-TTY/piped environment fails fast
+  with exit code `1`.
+
 ---
 
 ## 4. CLI Command Reference & Everyday Recipes
@@ -304,7 +347,8 @@ Every command supports `--help` (`smartbackup restore --help`, …).
 | `--target` | `-t` | PATH | auto-detect external drive | Target directory/drive |
 | `--label` | `-l` | TEXT | — | Preferred target drive label (matched case-insensitively at detection time) |
 | `--prompt` | | | off | Run the interactive `[Y/n/d]` prompt for a detected drive (used by the auto-detect spawner) |
-| `--dry-run` | | | off | Simulate the backup: reports what would change without copying, deleting, or writing state (see [§3.1](#31-incremental-manifest-tracking)) |
+| `--select` | | | off | Open an interactive keyboard menu to choose specific top-level folders to back up (requires TTY; see [§3.6](#36-interactive-selective-folder-backup---select)) |
+| `--dry-run` | | | off | Simulate the backup with zero writes (no dirs, files, manifests, or logs; see [§3.1](#31-incremental-manifest-tracking)) |
 | `--quiet` | `-q` | | off | Minimal output (banner + summary still shown; per-file logging suppressed) |
 | `--exclude` | | TEXT (repeatable) | — | Add exclusion pattern(s). **Persists to `config.json` and applies to this run** — see [§7.3](#73-adding-custom-exclusions) |
 | `--list-drives` | | | — | List available external drives and exit |
@@ -318,7 +362,7 @@ Every command supports `--help` (`smartbackup restore --help`, …).
 | `--compress` | | FORMAT | — | Compress the backup after copying: `zip` or `tar.gz` |
 | `--hash` | | | off | SHA-256 change detection for files **up to 50 MB** |
 | `--hash-all` | | | off | SHA-256 for **all** files regardless of size (implies `--hash`; slower) |
-| `--version` | `-v` | | — | Print `smartbackup 0.8.0` and exit |
+| `--version` | `-v` | | — | Print `smartbackup 0.9.0` and exit |
 | `--help` | `-h` | | — | Show help and exit |
 
 ### 4.2 Everyday recipes
@@ -340,7 +384,9 @@ smartbackup --quiet                           # minimal output (scripts/CI)
 **Preview before you run**
 
 ```bash
-smartbackup --dry-run                         # simulate a backup: no copies, no manifest writes
+smartbackup --dry-run                         # simulate a backup (zero target writes)
+smartbackup --select                          # interactively choose specific folders to back up
+smartbackup --select --dry-run                # choose folders and preview with zero target writes
 smartbackup --list-drives                     # what drives are visible?
 smartbackup --target /media/USB --list-devices      # which machines have backups here?
 smartbackup --target /media/USB --show-manifest     # manifest header stats
@@ -465,8 +511,8 @@ No options; details in [§5](#5-auto-detect-daemon--watcher-guide).
 
 | Code | Meaning |
 |---|---|
-| `0` | Success (also: dry-run/list/manifest actions, prompt skipped by user, watcher stopped with Ctrl+C) |
-| `1` | Failure: backup errors, verification errors, unsupported `--compress` format, missing directories, missing required `--target`/`--source` |
+| `0` | Success (also: dry-run/list/manifest actions, `--select` or `--prompt` cancelled by user, watcher stopped with Ctrl+C) |
+| `1` | Failure: backup errors, verification errors, `--select` invoked without an interactive TTY, unsupported `--compress`/`--manifest-format`, missing directories, missing required `--target`/`--source` |
 | `130` | Interrupted with Ctrl+C during a backup |
 
 ---
@@ -539,8 +585,7 @@ After the run completes, prompt-mode windows display
 - **Per-drive cooldown** (default `300` s, i.e. 5 minutes) — re-plugging the same drive
   won't re-prompt until the cooldown expires.
 - State is persisted in `<config dir>/watcher_state.json`.
-  *To force an immediate re-prompt*, close the watcher/daemon and delete that file
-  (there is no CLI command for this yet — see [`docs/PLAN_WIRING_FIXES.md`](PLAN_WIRING_FIXES.md)).
+  *To force an immediate re-prompt*, run `smartbackup daemon clear-state`.
 
 **Terminal used for the prompt window:**
 
@@ -950,6 +995,7 @@ owned by root — `chown`/`mount` it read-write or pick another target.
 | `No files found for backup!` | Source empty, wrong `--source`, or everything excluded | Check `--source`; check exclusions (§3.5) |
 | `UnicodeEncodeError … charmap` (Windows) | Legacy console host can't render the banner | Windows Terminal or `PYTHONUTF8=1` (§8.1) |
 | `Permission denied` while scanning | OS privacy controls (macOS TCC / Windows controlled folders) | Grant access (§8.2) or run from another location |
+| `The --select option requires an interactive terminal (TTY)` | `--select` invoked in a piped/non-interactive shell or CI runner | Run in an interactive terminal or omit `--select` |
 | `Storage medium error (drive may have been disconnected)` | Drive unplugged mid-run | Reconnect and re-run; already-copied files are tracked in the manifest |
 | Restore finds nothing | `--source` points at the device folder instead of the drive root | Use the drive root (§6.1) |
 | Restore targets the wrong machine's folder | Hostname differs from folder name | `--device-name <folder>` |
@@ -959,8 +1005,7 @@ owned by root — `chown`/`mount` it read-write or pick another target.
 
 1. `restore` handles directories only — extract archives first (§6.5).
 2. No encryption, deduplication, versioning, or remote targets (§1).
-
-Remaining wiring items are tracked in [`docs/PLAN_WIRING_FIXES.md`](PLAN_WIRING_FIXES.md).
+3. `--select` currently operates on top-level folders only (not individual root files).
 
 ---
 
@@ -974,7 +1019,8 @@ smartbackup [OPTIONS]
   -t, --target PATH        Target drive/directory (default: auto-detect)
   -l, --label TEXT         Preferred target drive label
       --prompt             Interactive [Y/n/d] prompt mode
-      --dry-run            Simulate (no copies, no manifest writes)
+      --select             Interactive folder picker (top-level folders, TTY required)
+      --dry-run            Simulate (zero writes: no dirs, files, manifests, or logs)
   -q, --quiet              Minimal output
       --exclude TEXT       Persist extra exclusion pattern(s) to config
       --list-drives        Show drives and exit
@@ -1046,8 +1092,6 @@ smartbackup daemon   install | status | uninstall | clear-state
 
 ### D. Further reading
 
-- [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) — internals, pipelines, data flows
-- [`docs/PLAN_WIRING_FIXES.md`](PLAN_WIRING_FIXES.md) — known limitations and the fix plan
 - [`docs/CONTRIBUTING.md`](CONTRIBUTING.md) — development setup, tests, linting
 - [`docs/CHANGELOG.md`](CHANGELOG.md) — release history
 - [`README.md`](../README.md) — overview and quick start

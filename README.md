@@ -49,7 +49,8 @@ your backups:
 |---------|-------------|
 | 🚀 **Cross-Platform** | Works on Windows, macOS, and Linux |
 | 🔍 **Smart Filtering** | Auto-skips `node_modules`, `venv`, `.git`, `__pycache__`, build outputs, caches |
-| 📊 **Incremental Backup** | JSON or SQLite manifest (`--manifest-format json\|sqlite`) with auto-detection & seamless migration |
+| 📂 **Selective Backup** | Interactive folder picker (`--select`) with keyboard checkboxes, unselected-folder immunity, and audit history |
+| 📊 **Incremental Backup** | JSON or SQLite manifest (`--manifest-format json\|sqlite`) with auto-detection, dedicated SQLite `selective_backups` table & seamless migration |
 | 🔐 **SHA-256 Hashing** | Optional tiered hashing (`--hash` ≤ 50 MB, `--hash-all` for everything) |
 | 🔄 **Restore Support** | Conflict strategies (`skip`, `overwrite`, `newer`, `rename`), pattern filtering, `--manifest-info`, dry-run preview |
 | 💻 **Multi-Device** | Per-device backup folders — multiple machines share one drive |
@@ -97,7 +98,7 @@ copies only what changed since the last run. If no drive is found, you'll be off
 temporary backup instead.
 
 ```bash
-smartbackup --version     # verify: smartbackup 0.8.0
+smartbackup --version     # verify: smartbackup 0.9.0
 smartbackup --help        # all commands and options
 ```
 
@@ -107,9 +108,11 @@ smartbackup --help        # all commands and options
 
 ```bash
 smartbackup                                   # backup Documents to the auto-detected drive
+smartbackup --select                          # interactively choose specific folders to back up
+smartbackup --select --dry-run                # pick folders and simulate (zero writes to target)
 smartbackup --source ~/Projects               # back up a custom folder
 smartbackup --target /media/USB_DRIVE         # back up to an explicit path
-smartbackup --dry-run                         # simulate a backup (no copies, no manifest writes)
+smartbackup --dry-run                         # simulate a backup (no copies, no manifest, no logs)
 smartbackup --manifest-format sqlite          # store manifest in SQLite (.smartbackup_manifest.db)
 smartbackup --notify                          # send an OS desktop notification when done
 smartbackup --list-drives                     # show available drives
