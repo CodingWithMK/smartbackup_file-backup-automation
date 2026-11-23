@@ -1,15 +1,5 @@
 """
-CLI wiring for restore conflict strategies (F3).
-
-The restore engine has always carried a `ConflictResolution` enum, but the
-command only exposed `--overwrite`, so NEWER was unreachable and RENAME was
-never selected. These tests drive the real Typer command end to end:
-
-  * `--conflict rename` keeps both files (local + renamed restored copy)
-  * `--conflict newer` skips an older backup and overwrites a newer one
-  * an unknown value exits 1 with a helpful message
-  * `--overwrite` remains a working alias
-  * `--conflict` wins when both flags are supplied
+Integration tests for the `smartbackup restore` CLI command (F3, F7).
 """
 
 import os
@@ -19,12 +9,12 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from smartbackup.cli import app
+from smartbackup.manifest.json_manifest import JsonManifestManager
 
 runner = CliRunner()
 
 
 def _backup_file(tmp_path: Path, content: str = "BACKUP CONTENT") -> Path:
-    """Create a minimal backup tree and return the backed-up file."""
     backup_file = tmp_path / "backup" / "Documents-Backup" / "file1.txt"
     backup_file.parent.mkdir(parents=True)
     backup_file.write_text(content)
@@ -32,7 +22,6 @@ def _backup_file(tmp_path: Path, content: str = "BACKUP CONTENT") -> Path:
 
 
 def _target(tmp_path: Path, content: str = "LOCAL CONTENT") -> Path:
-    """Create the restore destination with a conflicting local file."""
     target = tmp_path / "restored"
     target.mkdir()
     (target / "file1.txt").write_text(content)
@@ -98,11 +87,9 @@ class TestRestoreConflictCli:
         assert "Invalid --conflict value" in result.output
         for valid in ("skip", "overwrite", "newer", "rename"):
             assert valid in result.output
-        # The invalid value must not mutate the destination
         assert (target / "file1.txt").read_text() == "LOCAL CONTENT"
 
     def test_overwrite_flag_alias_still_works(self, tmp_path: Path):
-        """Regression: the pre-0.7 flag keeps its behavior."""
         _backup_file(tmp_path)
         target = _target(tmp_path)
 
@@ -112,7 +99,6 @@ class TestRestoreConflictCli:
         assert (target / "file1.txt").read_text() == "BACKUP CONTENT"
 
     def test_conflict_wins_over_overwrite(self, tmp_path: Path):
-        """When both are given, the explicit --conflict strategy takes precedence."""
         _backup_file(tmp_path)
         target = _target(tmp_path)
 
@@ -148,8 +134,6 @@ class TestRestoreListAndManifestInfoCli:
         assert "image.png" not in result.output
 
     def test_restore_manifest_info_displays_summary(self, tmp_path: Path):
-        from smartbackup.manifest.json_manifest import JsonManifestManager
-
         backup_root = tmp_path / "backup" / "Documents-Backup"
         backup_root.mkdir(parents=True)
         (backup_root / "notes.txt").write_text("hello")

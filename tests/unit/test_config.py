@@ -1,8 +1,7 @@
 """
-Tests for the config module.
+Unit tests for the config module.
 """
 
-import tempfile
 from pathlib import Path
 
 from smartbackup.config import (
@@ -56,9 +55,9 @@ class TestExcludedExtensions:
 class TestBackupConfig:
     """Tests for BackupConfig dataclass."""
 
-    def test_default_config(self, temp_dir: Path):
+    def test_default_config(self, tmp_path: Path):
         """Default config should have sensible defaults."""
-        config = BackupConfig(source_path=temp_dir, backup_path=temp_dir)
+        config = BackupConfig(source_path=tmp_path, backup_path=tmp_path)
 
         assert config.backup_folder_name == "Documents-Backup"
         assert config.device_name == ""
@@ -67,31 +66,27 @@ class TestBackupConfig:
         assert config.log_to_file is True
         assert config.verbose is True
 
-    def test_custom_device_name(self, temp_dir: Path):
+    def test_custom_device_name(self, tmp_path: Path):
         """Custom device_name should be accepted."""
         config = BackupConfig(
-            source_path=temp_dir,
-            backup_path=temp_dir,
+            source_path=tmp_path,
+            backup_path=tmp_path,
             device_name="Work-Laptop",
         )
         assert config.device_name == "Work-Laptop"
 
-    def test_exclusions_are_copied(self, temp_dir: Path):
+    def test_exclusions_are_copied(self, tmp_path: Path):
         """Default exclusions should be a copy, not the original set."""
-        config = BackupConfig(source_path=temp_dir, backup_path=temp_dir)
-
-        # Modify config exclusions
+        config = BackupConfig(source_path=tmp_path, backup_path=tmp_path)
         config.exclusions.add("test_exclusion")
-
-        # Original should not be modified
         assert "test_exclusion" not in DEFAULT_EXCLUSIONS
 
-    def test_custom_exclusions(self, temp_dir: Path):
+    def test_custom_exclusions(self, tmp_path: Path):
         """Custom exclusions should be accepted."""
         custom = {"my_folder", "other_folder"}
         config = BackupConfig(
-            source_path=temp_dir,
-            backup_path=temp_dir,
+            source_path=tmp_path,
+            backup_path=tmp_path,
             exclusions=custom,
         )
 
@@ -99,19 +94,18 @@ class TestBackupConfig:
         assert "other_folder" in config.exclusions
         assert "node_modules" not in config.exclusions
 
-    def test_custom_workers(self, temp_dir: Path):
+    def test_custom_workers(self, tmp_path: Path):
         """Custom worker count should be accepted."""
         config = BackupConfig(
-            source_path=temp_dir,
-            backup_path=temp_dir,
+            source_path=tmp_path,
+            backup_path=tmp_path,
             max_workers=8,
         )
-
         assert config.max_workers == 8
 
 
 class TestConfigManager:
-    """Tests for ConfigManager class."""
+    """Tests for ConfigManager class (isolated into tmp_path via conftest)."""
 
     def test_config_manager_creation(self):
         """ConfigManager should be creatable."""
@@ -123,124 +117,76 @@ class TestConfigManager:
     def test_load_empty_config(self):
         """Loading non-existent config should return empty dict."""
         manager = ConfigManager()
-        # Use a non-existent path
-        manager.config_file = Path("/tmp/nonexistent_smartbackup_config.json")
-        config = manager.load()
-        assert config == {}
+        assert manager.load() == {}
 
     def test_save_and_load_config(self):
         """Config should be saveable and loadable."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            manager = ConfigManager()
-            manager.config_dir = Path(tmpdir)
-            manager.config_file = Path(tmpdir) / "config.json"
+        manager = ConfigManager()
+        manager.save({"key": "value", "number": 42})
 
-            # Save config
-            test_config = {"key": "value", "number": 42}
-            manager.save(test_config)
-
-            # Load config
-            loaded = manager.load()
-            assert loaded["key"] == "value"
-            assert loaded["number"] == 42
+        loaded = manager.load()
+        assert loaded["key"] == "value"
+        assert loaded["number"] == 42
 
     def test_add_exclusion(self):
         """Exclusions should be addable."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            manager = ConfigManager()
-            manager.config_dir = Path(tmpdir)
-            manager.config_file = Path(tmpdir) / "config.json"
+        manager = ConfigManager()
+        manager.add_exclusion("my_pattern")
 
-            manager.add_exclusion("my_pattern")
-
-            config = manager.load()
-            assert "my_pattern" in config.get("exclusions", [])
+        config = manager.load()
+        assert "my_pattern" in config.get("exclusions", [])
 
     def test_get_exclusions_includes_defaults(self):
         """get_exclusions should include default exclusions."""
         manager = ConfigManager()
-        manager.config_file = Path("/tmp/nonexistent_config.json")
-
         exclusions = manager.get_exclusions()
         assert "node_modules" in exclusions
         assert "__pycache__" in exclusions
 
     def test_get_exclusions_merges_custom_patterns(self):
         """get_exclusions should union persisted custom patterns with the defaults."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            manager = ConfigManager()
-            manager.config_dir = Path(tmpdir)
-            manager.config_file = Path(tmpdir) / "config.json"
+        manager = ConfigManager()
+        manager.add_exclusion("LargeDatasets")
 
-            manager.add_exclusion("LargeDatasets")
-
-            exclusions = manager.get_exclusions()
-            assert "LargeDatasets" in exclusions  # custom pattern merged in
-            assert "node_modules" in exclusions  # defaults preserved
+        exclusions = manager.get_exclusions()
+        assert "LargeDatasets" in exclusions
+        assert "node_modules" in exclusions
 
     def test_set_and_get_preferred_target(self):
         """Preferred target should be saveable and loadable."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            manager = ConfigManager()
-            manager.config_dir = Path(tmpdir)
-            manager.config_file = Path(tmpdir) / "config.json"
-
-            manager.set_preferred_target("MY_DRIVE")
-
-            target = manager.get_preferred_target()
-            assert target == "MY_DRIVE"
+        manager = ConfigManager()
+        manager.set_preferred_target("MY_DRIVE")
+        assert manager.get_preferred_target() == "MY_DRIVE"
 
     def test_get_preferred_target_none_by_default(self):
         """Preferred target should be None by default."""
         manager = ConfigManager()
-        manager.config_file = Path("/tmp/nonexistent_config.json")
-
-        target = manager.get_preferred_target()
-        assert target is None
+        assert manager.get_preferred_target() is None
 
     def test_set_and_get_device_name(self):
         """Device name should be saveable and loadable."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            manager = ConfigManager()
-            manager.config_dir = Path(tmpdir)
-            manager.config_file = Path(tmpdir) / "config.json"
-
-            manager.set_device_name("My-MacBook")
-
-            name = manager.get_device_name()
-            assert name == "My-MacBook"
+        manager = ConfigManager()
+        manager.set_device_name("My-MacBook")
+        assert manager.get_device_name() == "My-MacBook"
 
     def test_get_device_name_none_by_default(self):
         """Device name should be None by default."""
         manager = ConfigManager()
-        manager.config_file = Path("/tmp/nonexistent_config.json")
-
-        name = manager.get_device_name()
-        assert name is None
+        assert manager.get_device_name() is None
 
     def test_set_and_get_auto_watch_cooldown(self):
         """Auto watch cooldown should be saveable and loadable."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            manager = ConfigManager()
-            manager.config_dir = Path(tmpdir)
-            manager.config_file = Path(tmpdir) / "config.json"
-
-            manager.set_auto_watch_cooldown(120)
-            assert manager.get_auto_watch_cooldown() == 120
+        manager = ConfigManager()
+        manager.set_auto_watch_cooldown(120)
+        assert manager.get_auto_watch_cooldown() == 120
 
     def test_get_auto_watch_cooldown_default_300(self):
         """Auto watch cooldown should default to 300."""
         manager = ConfigManager()
-        manager.config_file = Path("/tmp/nonexistent_config.json")
         assert manager.get_auto_watch_cooldown() == 300
 
     def test_set_and_get_preferred_terminal(self):
         """Preferred terminal should be saveable and loadable."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            manager = ConfigManager()
-            manager.config_dir = Path(tmpdir)
-            manager.config_file = Path(tmpdir) / "config.json"
-
-            manager.set_preferred_terminal("iTerm2")
-            assert manager.get_preferred_terminal() == "iTerm2"
-
+        manager = ConfigManager()
+        manager.set_preferred_terminal("iTerm2")
+        assert manager.get_preferred_terminal() == "iTerm2"

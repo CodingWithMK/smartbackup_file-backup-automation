@@ -3,16 +3,12 @@ Black-box sandbox smoke tests.
 
 Spawns the real entry point (`python main.py ...`) as a subprocess inside a
 fully isolated sandbox: temporary source, temporary target, and a redirected
-configuration directory (APPDATA on Windows, HOME elsewhere) so the
-developer's actual SmartBackup config is never read or written.
+configuration directory (APPDATA on Windows, HOME elsewhere).
 
-These tests guard the Phase-0 fixes at the process boundary - exit codes,
-on-disk state, and the version string printed by `--version` - exactly as a
-user would experience them.
-
-Registered marker: `sandbox`. Run only this layer with:
+Registered markers: `sandbox`, `smoke`. Run only this layer with:
 
     pytest -m sandbox
+    pytest -m smoke
 """
 
 import json
@@ -25,20 +21,18 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 ENTRY_POINT = REPO_ROOT / "main.py"
 DEVICE = "SmokeBox"
 TIMEOUT_SECONDS = 120
 
 pytestmark = [
     pytest.mark.sandbox,
+    pytest.mark.smoke,
     pytest.mark.skipif(not ENTRY_POINT.exists(), reason="main.py entry point not found"),
 ]
 
 
-# --------------------------------------------------------------------------- #
-# Sandbox helpers
-# --------------------------------------------------------------------------- #
 def _sandbox_env(sandbox_root: Path) -> dict:
     """Environment with a redirected config directory and UTF-8 output."""
     env = os.environ.copy()
@@ -88,9 +82,6 @@ def _backup_file(target: Path) -> Path:
     return target / "Documents-Backup" / DEVICE / "file1.txt"
 
 
-# --------------------------------------------------------------------------- #
-# Tests
-# --------------------------------------------------------------------------- #
 class TestCliSurfaceSmoke:
     def test_version_and_help_report_expected_values(self, tmp_path: Path):
         env = _sandbox_env(tmp_path)
@@ -109,7 +100,6 @@ class TestCliSurfaceSmoke:
 
 class TestDryRunLifecycleSmoke:
     def test_dry_run_then_real_lifecycle(self, tmp_path: Path):
-        """The full Phase-0 F1 contract, black-box at the process boundary."""
         env = _sandbox_env(tmp_path)
         src = tmp_path / "source"
         src.mkdir()
@@ -131,16 +121,13 @@ class TestDryRunLifecycleSmoke:
                 env,
             )
 
-        # 1. Dry-run against a fresh target must not write a manifest
         _assert_ok(run("--dry-run"))
         assert not list(target.rglob(".smartbackup_manifest.json"))
 
-        # 2. The real run after it copies everything
         _assert_ok(run())
         _manifest(target)
         assert _backup_file(target).read_text() == "VERSION-1"
 
-        # 3. Modify the source: a dry-run must not advance the manifest
         (src / "file1.txt").write_text("VERSION-2-MODIFIED")
         manifest_before = _manifest(target).read_bytes()
         backup_before = _backup_file(target).read_text()
@@ -149,14 +136,12 @@ class TestDryRunLifecycleSmoke:
         assert _manifest(target).read_bytes() == manifest_before
         assert _backup_file(target).read_text() == backup_before
 
-        # 4. The next real run picks the change up
         _assert_ok(run())
         assert _backup_file(target).read_text() == "VERSION-2-MODIFIED"
 
 
 class TestExcludePersistenceSmoke:
     def test_exclude_flag_persists_and_applies_across_invocations(self, tmp_path: Path):
-        """The full Phase-0 F2 contract: persist, apply now, apply later."""
         env = _sandbox_env(tmp_path)
         src = tmp_path / "source"
         src.mkdir()
@@ -179,7 +164,6 @@ class TestExcludePersistenceSmoke:
                 env,
             )
 
-        # 1. With the flag: applied to this run and persisted to the sandbox config
         _assert_ok(run("--exclude", "*.iso"))
         backup_root = target / "Documents-Backup" / DEVICE
         assert not (backup_root / "image.iso").exists()
@@ -190,7 +174,6 @@ class TestExcludePersistenceSmoke:
         saved = json.loads(config_file.read_text(encoding="utf-8"))
         assert "*.iso" in saved.get("exclusions", [])
 
-        # 2. Fresh medium, no flag: the stored pattern still applies
         shutil.rmtree(target)
         target.mkdir()
         _assert_ok(run())
@@ -235,7 +218,6 @@ class TestValidationFailureSmoke:
         assert not target.exists(), "failed validation recreated the missing target"
 
     def test_valid_target_still_exits_zero(self, tmp_path: Path):
-        """Control: the sandbox itself must not force a non-zero exit."""
         env = _sandbox_env(tmp_path)
         src = tmp_path / "source"
         src.mkdir()
@@ -261,7 +243,7 @@ class TestValidationFailureSmoke:
 
 
 class TestRestoreConflictSmoke:
-    """F3: the new --conflict flag works at the process boundary."""
+    """F3: the --conflict flag works at the process boundary."""
 
     def test_conflict_rename_keeps_both_files(self, tmp_path: Path):
         env = _sandbox_env(tmp_path)

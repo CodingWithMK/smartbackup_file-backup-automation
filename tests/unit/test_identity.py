@@ -1,5 +1,5 @@
 """
-Tests for the platform identity module.
+Unit tests for the platform identity module.
 """
 
 from unittest.mock import patch

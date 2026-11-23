@@ -1,5 +1,5 @@
 """
-Tests for the detector module.
+Unit tests for core.detector.ChangeDetector.
 """
 
 from pathlib import Path
@@ -28,7 +28,6 @@ class TestChangeDetector:
         detector = ChangeDetector()
         logger = BackupLogger(verbose=False)
 
-        # Create source file info
         source_files = {
             Path("file1.txt"): FileInfo(
                 path=source_dir / "file1.txt",
@@ -51,20 +50,16 @@ class TestChangeDetector:
         detector = ChangeDetector()
         logger = BackupLogger(verbose=False)
 
-        # Create backup file (older)
         backup_file = backup_dir / "file1.txt"
         backup_file.write_text("old content")
-
-        # Get backup mtime
         backup_mtime = backup_file.stat().st_mtime
 
-        # Create source file info (newer)
         source_files = {
             Path("file1.txt"): FileInfo(
                 path=source_dir / "file1.txt",
                 relative_path=Path("file1.txt"),
                 size=11,
-                mtime=backup_mtime + 100,  # Newer than backup
+                mtime=backup_mtime + 100,
             ),
         }
 
@@ -81,12 +76,10 @@ class TestChangeDetector:
         detector = ChangeDetector()
         logger = BackupLogger(verbose=False)
 
-        # Create backup file
         backup_file = backup_dir / "file1.txt"
         backup_file.write_text("Hello World")
         backup_stat = backup_file.stat()
 
-        # Create source file info (same as backup)
         source_files = {
             Path("file1.txt"): FileInfo(
                 path=source_dir / "file1.txt",
@@ -96,7 +89,7 @@ class TestChangeDetector:
             ),
         }
 
-        new_files, modified_files, deleted_files = detector.detect_changes(
+        new_files, modified_files, _ = detector.detect_changes(
             source_files, backup_dir, logger
         )
 
@@ -108,15 +101,11 @@ class TestChangeDetector:
         detector = ChangeDetector()
         logger = BackupLogger(verbose=False)
 
-        # Create backup file that doesn't exist in source
         orphan_file = backup_dir / "orphan.txt"
         orphan_file.write_text("orphan content")
 
-        # Empty source
-        source_files = {}
-
         new_files, modified_files, deleted_files = detector.detect_changes(
-            source_files, backup_dir, logger
+            {}, backup_dir, logger
         )
 
         assert len(new_files) == 0
@@ -129,12 +118,10 @@ class TestChangeDetector:
         detector = ChangeDetector()
         logger = BackupLogger(verbose=False)
 
-        # Create backup files
         (backup_dir / "existing.txt").write_text("old")
         (backup_dir / "orphan.txt").write_text("orphan")
         existing_mtime = (backup_dir / "existing.txt").stat().st_mtime
 
-        # Create source file info
         source_files = {
             Path("new.txt"): FileInfo(
                 path=source_dir / "new.txt",
@@ -145,7 +132,7 @@ class TestChangeDetector:
             Path("existing.txt"): FileInfo(
                 path=source_dir / "existing.txt",
                 relative_path=Path("existing.txt"),
-                size=100,  # Different size = modified
+                size=100,
                 mtime=existing_mtime,
             ),
         }
@@ -163,17 +150,15 @@ class TestChangeDetector:
         detector = ChangeDetector()
         logger = BackupLogger(verbose=False)
 
-        # Create backup structure
         subdir = backup_dir / "subdir"
         subdir.mkdir()
         (subdir / "nested.txt").write_text("nested")
 
-        # Source has new file in subdir
         source_files = {
             Path("subdir/nested.txt"): FileInfo(
                 path=source_dir / "subdir" / "nested.txt",
                 relative_path=Path("subdir/nested.txt"),
-                size=100,  # Different size
+                size=100,
                 mtime=9999999999.0,
             ),
             Path("subdir/new_nested.txt"): FileInfo(
@@ -184,36 +169,9 @@ class TestChangeDetector:
             ),
         }
 
-        new_files, modified_files, deleted_files = detector.detect_changes(
+        new_files, modified_files, _ = detector.detect_changes(
             source_files, backup_dir, logger
         )
 
         assert len(new_files) == 1
         assert len(modified_files) == 1
-
-
-class TestDeviceDetector:
-    """Tests for DeviceDetector.validate_device() (F8)."""
-
-    def test_validate_device_writable_dir(self, tmp_path: Path):
-        from smartbackup.platform.devices import DeviceDetector
-
-        detector = DeviceDetector(BackupLogger(verbose=False))
-        assert detector.validate_device(tmp_path) is True
-        assert not (tmp_path / ".write_test").exists()
-
-    def test_validate_device_missing_dir(self, tmp_path: Path):
-        from smartbackup.platform.devices import DeviceDetector
-
-        detector = DeviceDetector(BackupLogger(verbose=False))
-        assert detector.validate_device(tmp_path / "nonexistent") is False
-
-    def test_validate_device_unwritable_dir(self, tmp_path: Path, monkeypatch):
-        from smartbackup.platform.devices import DeviceDetector
-
-        def deny_write(self, *args, **kwargs):
-            raise PermissionError("read-only")
-
-        monkeypatch.setattr(Path, "write_text", deny_write)
-        detector = DeviceDetector(BackupLogger(verbose=False))
-        assert detector.validate_device(tmp_path) is False

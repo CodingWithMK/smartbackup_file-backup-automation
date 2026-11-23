@@ -1,5 +1,5 @@
 """
-Tests for the models module.
+Unit tests for core data models (FileAction, FileInfo, BackupResult).
 """
 
 from datetime import datetime, timedelta
@@ -23,9 +23,9 @@ class TestFileAction:
 class TestFileInfo:
     """Tests for FileInfo dataclass."""
 
-    def test_file_info_creation(self, temp_dir: Path):
+    def test_file_info_creation(self, tmp_path: Path):
         """FileInfo should be creatable with required fields."""
-        path = temp_dir / "test.txt"
+        path = tmp_path / "test.txt"
         info = FileInfo(
             path=path,
             relative_path=Path("test.txt"),
@@ -39,10 +39,10 @@ class TestFileInfo:
         assert info.mtime == 1234567890.0
         assert info.file_hash is None
 
-    def test_file_info_with_hash(self, temp_dir: Path):
+    def test_file_info_with_hash(self, tmp_path: Path):
         """FileInfo should accept optional hash."""
         info = FileInfo(
-            path=temp_dir / "test.txt",
+            path=tmp_path / "test.txt",
             relative_path=Path("test.txt"),
             size=100,
             mtime=1234567890.0,
@@ -51,16 +51,16 @@ class TestFileInfo:
 
         assert info.file_hash == "abc123"
 
-    def test_needs_update_different_size(self, temp_dir: Path):
+    def test_needs_update_different_size(self, tmp_path: Path):
         """File needs update if size differs."""
         source = FileInfo(
-            path=temp_dir / "src.txt",
+            path=tmp_path / "src.txt",
             relative_path=Path("test.txt"),
             size=200,
             mtime=1234567890.0,
         )
         backup = FileInfo(
-            path=temp_dir / "bak.txt",
+            path=tmp_path / "bak.txt",
             relative_path=Path("test.txt"),
             size=100,
             mtime=1234567890.0,
@@ -68,16 +68,16 @@ class TestFileInfo:
 
         assert source.needs_update(backup) is True
 
-    def test_needs_update_newer_mtime(self, temp_dir: Path):
+    def test_needs_update_newer_mtime(self, tmp_path: Path):
         """File needs update if source is newer."""
         source = FileInfo(
-            path=temp_dir / "src.txt",
+            path=tmp_path / "src.txt",
             relative_path=Path("test.txt"),
             size=100,
-            mtime=1234567900.0,  # Newer
+            mtime=1234567900.0,
         )
         backup = FileInfo(
-            path=temp_dir / "bak.txt",
+            path=tmp_path / "bak.txt",
             relative_path=Path("test.txt"),
             size=100,
             mtime=1234567890.0,
@@ -85,16 +85,33 @@ class TestFileInfo:
 
         assert source.needs_update(backup) is True
 
-    def test_needs_update_same_file(self, temp_dir: Path):
+    def test_needs_update_backward_mtime(self) -> None:
+        """FileInfo.needs_update() should detect backward mtime changes."""
+        source = FileInfo(
+            path=Path("/src.txt"),
+            relative_path=Path("test.txt"),
+            size=100,
+            mtime=1000.0,
+        )
+        backup = FileInfo(
+            path=Path("/bak.txt"),
+            relative_path=Path("test.txt"),
+            size=100,
+            mtime=2000.0,
+        )
+
+        assert source.needs_update(backup) is True
+
+    def test_needs_update_same_file(self, tmp_path: Path):
         """File does not need update if same size and mtime."""
         source = FileInfo(
-            path=temp_dir / "src.txt",
+            path=tmp_path / "src.txt",
             relative_path=Path("test.txt"),
             size=100,
             mtime=1234567890.0,
         )
         backup = FileInfo(
-            path=temp_dir / "bak.txt",
+            path=tmp_path / "bak.txt",
             relative_path=Path("test.txt"),
             size=100,
             mtime=1234567890.0,
@@ -102,17 +119,17 @@ class TestFileInfo:
 
         assert source.needs_update(backup) is False
 
-    def test_needs_update_different_hash(self, temp_dir: Path):
+    def test_needs_update_different_hash(self, tmp_path: Path):
         """File needs update if hash differs (when using hash)."""
         source = FileInfo(
-            path=temp_dir / "src.txt",
+            path=tmp_path / "src.txt",
             relative_path=Path("test.txt"),
             size=100,
             mtime=1234567890.0,
             file_hash="abc123",
         )
         backup = FileInfo(
-            path=temp_dir / "bak.txt",
+            path=tmp_path / "bak.txt",
             relative_path=Path("test.txt"),
             size=100,
             mtime=1234567890.0,
@@ -121,17 +138,17 @@ class TestFileInfo:
 
         assert source.needs_update(backup, use_hash=True) is True
 
-    def test_needs_update_same_hash(self, temp_dir: Path):
+    def test_needs_update_same_hash(self, tmp_path: Path):
         """File does not need update if hash is same."""
         source = FileInfo(
-            path=temp_dir / "src.txt",
+            path=tmp_path / "src.txt",
             relative_path=Path("test.txt"),
             size=100,
             mtime=1234567890.0,
             file_hash="abc123",
         )
         backup = FileInfo(
-            path=temp_dir / "bak.txt",
+            path=tmp_path / "bak.txt",
             relative_path=Path("test.txt"),
             size=100,
             mtime=1234567890.0,
@@ -174,8 +191,6 @@ class TestBackupResult:
     def test_duration_without_end_time(self):
         """Duration should work without end_time set."""
         result = BackupResult()
-
-        # Duration should be positive (time since creation)
         assert result.duration >= 0
 
     def test_duration_with_end_time(self):
@@ -184,7 +199,6 @@ class TestBackupResult:
         end = start + timedelta(seconds=10)
 
         result = BackupResult(start_time=start, end_time=end)
-
         assert result.duration == 10.0
 
     def test_speed_mbps_zero_duration(self):
@@ -192,7 +206,7 @@ class TestBackupResult:
         start = datetime.now()
         result = BackupResult(
             start_time=start,
-            end_time=start,  # Same time = 0 duration
+            end_time=start,
             copied_size=1024 * 1024,
         )
 
@@ -206,10 +220,9 @@ class TestBackupResult:
         result = BackupResult(
             start_time=start,
             end_time=end,
-            copied_size=2 * 1024 * 1024,  # 2 MB
+            copied_size=2 * 1024 * 1024,
         )
 
-        # 2 MB in 2 seconds = 1 MB/s
         assert result.speed_mbps == 1.0
 
     def test_file_actions_list(self):

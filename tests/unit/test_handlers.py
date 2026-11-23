@@ -1,14 +1,10 @@
 """
-Unit and CLI wiring tests for cross-platform desktop notifications (F10).
+Unit tests for handlers module (desktop notification dispatch & escaping).
 """
 
 import subprocess
-import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from smartbackup.cli import main
-from smartbackup.config import ConfigManager
 from smartbackup.handlers import FallbackHandler, _escape_applescript, _escape_powershell
 from smartbackup.models import BackupResult
 from smartbackup.ui.logger import BackupLogger
@@ -46,7 +42,9 @@ class TestDesktopNotifications:
             patch("smartbackup.handlers.shutil.which", return_value="/usr/bin/osascript"),
             patch("smartbackup.handlers.subprocess.run", return_value=completed) as mock_run,
         ):
-            handler.notify_completion(_sample_result(copied=4, updated=2, skipped=1), True, desktop=True)
+            handler.notify_completion(
+                _sample_result(copied=4, updated=2, skipped=1), True, desktop=True
+            )
 
         mock_run.assert_called_once()
         cmd = mock_run.call_args.args[0]
@@ -107,22 +105,3 @@ class TestDesktopNotifications:
             ),
         ):
             assert handler._send_desktop_notification("Title", "Body") is False
-
-
-class TestNotifyCLIFlag:
-    def test_notify_flag_wired_to_smartbackup_run(self, tmp_path: Path, monkeypatch):
-        monkeypatch.setattr(ConfigManager, "_get_config_dir", lambda self: tmp_path / "cfg")
-
-        # Default: notify=False
-        with patch.object(sys, "argv", ["smartbackup", "--target", str(tmp_path)]):
-            with patch("smartbackup.cli.SmartBackup.run", return_value=True) as mock_run:
-                assert main() == 0
-        assert mock_run.call_args.kwargs["notify"] is False
-
-        # With --notify: notify=True
-        with patch.object(
-            sys, "argv", ["smartbackup", "--target", str(tmp_path), "--notify"]
-        ):
-            with patch("smartbackup.cli.SmartBackup.run", return_value=True) as mock_run:
-                assert main() == 0
-        assert mock_run.call_args.kwargs["notify"] is True
