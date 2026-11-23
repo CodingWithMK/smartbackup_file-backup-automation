@@ -12,6 +12,7 @@ from smartbackup.manifest.base import (
     ManifestEntry,
     ManifestFormat,
     ManifestManager,
+    SelectiveBackupRecord,
 )
 from smartbackup.manifest.factory import (
     SUPPORTED_MANIFEST_FORMATS,
@@ -28,6 +29,7 @@ __all__ = [
     "ManifestEntry",
     "ManifestFormat",
     "ManifestManager",
+    "SelectiveBackupRecord",
     "JsonManifestManager",
     "SqliteManifestManager",
     "SUPPORTED_MANIFEST_FORMATS",

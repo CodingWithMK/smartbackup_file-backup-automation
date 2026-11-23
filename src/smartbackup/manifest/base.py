@@ -103,11 +103,80 @@ class ManifestEntry:
 
 
 @dataclass
+class SelectiveBackupRecord:
+    """Audit record for a single --select folder backup run."""
+
+    run_id: str
+    timestamp: datetime = field(default_factory=datetime.now)
+    command_option: str = "--select"
+    scope: str = "folders"
+    source_root: str = ""
+    selected_folders: list[str] = field(default_factory=list)
+    available_folders_count: int = 0
+    files_scanned: int = 0
+    files_copied: int = 0
+    files_updated: int = 0
+    files_deleted: int = 0
+    files_skipped: int = 0
+    bytes_copied: int = 0
+    duration_seconds: float = 0.0
+    workflow_steps: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Convert selective backup record to dictionary for serialization."""
+        return {
+            "run_id": self.run_id,
+            "timestamp": self.timestamp.isoformat(),
+            "command_option": self.command_option,
+            "scope": self.scope,
+            "source_root": self.source_root,
+            "selected_folders": list(self.selected_folders),
+            "available_folders_count": self.available_folders_count,
+            "files_scanned": self.files_scanned,
+            "files_copied": self.files_copied,
+            "files_updated": self.files_updated,
+            "files_deleted": self.files_deleted,
+            "files_skipped": self.files_skipped,
+            "bytes_copied": self.bytes_copied,
+            "duration_seconds": self.duration_seconds,
+            "workflow_steps": list(self.workflow_steps),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SelectiveBackupRecord":
+        """Create selective backup record from dictionary with backward-safe defaults."""
+        raw_ts = data.get("timestamp")
+        try:
+            timestamp = datetime.fromisoformat(raw_ts) if raw_ts else datetime.now()
+        except (TypeError, ValueError):
+            timestamp = datetime.now()
+
+        return cls(
+            run_id=str(data.get("run_id", "")),
+            timestamp=timestamp,
+            command_option=str(data.get("command_option", "--select")),
+            scope=str(data.get("scope", "folders")),
+            source_root=str(data.get("source_root", "")),
+            selected_folders=list(data.get("selected_folders", [])),
+            available_folders_count=int(data.get("available_folders_count", 0)),
+            files_scanned=int(data.get("files_scanned", 0)),
+            files_copied=int(data.get("files_copied", 0)),
+            files_updated=int(data.get("files_updated", 0)),
+            files_deleted=int(data.get("files_deleted", 0)),
+            files_skipped=int(data.get("files_skipped", 0)),
+            bytes_copied=int(data.get("bytes_copied", 0)),
+            duration_seconds=float(data.get("duration_seconds", 0.0)),
+            workflow_steps=list(data.get("workflow_steps", [])),
+        )
+
+
+@dataclass
 class Manifest:
     """
     Represents a complete backup manifest.
 
-    Contains metadata about the backup and all file entries.
+    Contains metadata about the backup, all file entries, and a clearly
+    separated audit trail of selective (--select) folder backup runs.
     """
 
     version: int = 1
@@ -119,6 +188,9 @@ class Manifest:
     hash_algorithm: str = "sha256"  # Hash algorithm used for file hashes
     backup_count: int = 0
     entries: dict[str, ManifestEntry] = field(default_factory=dict)
+    last_backup_mode: str = "full"  # "full" or "select"
+    last_selected_folders: list[str] = field(default_factory=list)
+    selective_backups: list[SelectiveBackupRecord] = field(default_factory=list)
 
     @property
     def total_files(self) -> int:
@@ -133,6 +205,13 @@ class Manifest:
     def add_entry(self, entry: ManifestEntry) -> None:
         """Add or update an entry in the manifest."""
         self.entries[entry.relative_path] = entry
+        self.updated = datetime.now()
+
+    def add_selective_backup(self, record: SelectiveBackupRecord) -> None:
+        """Record a selective (--select) backup run in the manifest."""
+        self.last_backup_mode = "select"
+        self.last_selected_folders = list(record.selected_folders)
+        self.selective_backups.append(record)
         self.updated = datetime.now()
 
     def remove_entry(self, relative_path: str) -> Optional[ManifestEntry]:
@@ -165,14 +244,24 @@ class Manifest:
             "hostname": self.hostname,
             "hash_algorithm": self.hash_algorithm,
             "backup_count": self.backup_count,
+            "last_backup_mode": self.last_backup_mode,
+            "last_selected_folders": list(self.last_selected_folders),
             "total_files": self.total_files,
             "total_size": self.total_size,
+            "selective_backups": [r.to_dict() for r in self.selective_backups],
             "files": {path: entry.to_dict() for path, entry in self.entries.items()},
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Manifest":
-        """Create manifest from dictionary."""
+        """Create manifest from dictionary with backward-compatible defaults."""
+        raw_selective = data.get("selective_backups", [])
+        selective_records = [
+            SelectiveBackupRecord.from_dict(item)
+            for item in raw_selective
+            if isinstance(item, dict)
+        ]
+
         manifest = cls(
             version=data.get("version", 1),
             format=ManifestFormat(data.get("format", "json")),
@@ -182,6 +271,9 @@ class Manifest:
             hostname=data.get("hostname", ""),
             hash_algorithm=data.get("hash_algorithm", "md5"),  # old manifests used MD5
             backup_count=data.get("backup_count", 0),
+            last_backup_mode=str(data.get("last_backup_mode", "full")),
+            last_selected_folders=list(data.get("last_selected_folders", [])),
+            selective_backups=selective_records,
         )
 
         # Load file entries
@@ -312,7 +404,10 @@ class ManifestManager(ABC):
         return manifest
 
     def diff(
-        self, source_files: dict[Path, FileInfo], manifest: Optional[Manifest] = None
+        self,
+        source_files: dict[Path, FileInfo],
+        manifest: Optional[Manifest] = None,
+        scoped_folders: Optional[list[str]] = None,
     ) -> ManifestDiff:
         """
         Compare source files against manifest to find changes.
@@ -320,6 +415,10 @@ class ManifestManager(ABC):
         Args:
             source_files: Dictionary of source files (path -> FileInfo)
             manifest: Existing manifest (loads from storage if None)
+            scoped_folders: Optional list of top-level folder names to restrict
+                deletion detection to (used by ``--select``). Manifest entries
+                outside these folders (including loose root-level files) are
+                immune and will never be reported in ``deleted_paths``.
 
         Returns:
             ManifestDiff with new, modified, and deleted files
@@ -335,7 +434,7 @@ class ManifestManager(ABC):
             return result
 
         # Track which manifest entries we've seen
-        seen_paths: set = set()
+        seen_paths: set[str] = set()
 
         for file_info in source_files.values():
             relative_path = str(file_info.relative_path)
@@ -353,9 +452,19 @@ class ManifestManager(ABC):
                 # Unchanged
                 result.unchanged_files.append(file_info)
 
+        scoped_set: Optional[set[str]] = (
+            set(scoped_folders) if scoped_folders is not None else None
+        )
+
         # Find deleted files (in manifest but not in source)
         for relative_path in manifest.entries:
             if relative_path not in seen_paths:
+                if scoped_set is not None:
+                    parts = Path(relative_path.replace("\\", "/")).parts
+                    # Only entries inside a selected top-level folder are in scope;
+                    # loose root-level files (len(parts) < 2) and unselected folders are immune.
+                    if len(parts) < 2 or parts[0] not in scoped_set:
+                        continue
                 result.deleted_paths.append(relative_path)
 
         return result

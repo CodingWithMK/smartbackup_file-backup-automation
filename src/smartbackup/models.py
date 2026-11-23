@@ -41,6 +41,19 @@ class FileInfo:
 
 
 @dataclass
+class SelectionMetadata:
+    """Captures the interactive --select session details for logging & manifest audit."""
+
+    command_option: str = "--select"
+    source_root: str = ""
+    available_folders: list[str] = field(default_factory=list)
+    selected_folders: list[str] = field(default_factory=list)
+    excluded_folders_count: int = 0
+    selected_at: datetime = field(default_factory=datetime.now)
+    workflow_steps: list[str] = field(default_factory=list)
+
+
+@dataclass
 class BackupResult:
     """Result of a backup operation."""
 
@@ -55,6 +68,9 @@ class BackupResult:
     start_time: datetime = field(default_factory=datetime.now)
     end_time: Optional[datetime] = None
     file_actions: list[tuple[Path, FileAction, str]] = field(default_factory=list)
+    backup_mode: str = "full"  # "full" or "select"
+    selected_folders: list[str] = field(default_factory=list)
+    selection_metadata: Optional[SelectionMetadata] = None
 
     @property
     def duration(self) -> float:

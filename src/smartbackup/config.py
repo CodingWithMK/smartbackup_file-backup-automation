@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from smartbackup.models import SelectionMetadata
+
 # Default exclusions for developer projects
 DEFAULT_EXCLUSIONS: set[str] = {
     # Node.js / JavaScript
@@ -127,6 +129,15 @@ class BackupConfig:
     compress_format: Optional[str] = None  # None (no compression), "zip", or "tar.gz"
     # Watcher options
     auto_watch_cooldown: int = 300  # Default debounce cooldown in seconds (5 minutes)
+    # Selective folder backup options (--select)
+    backup_mode: str = "full"  # "full" or "select"
+    selected_folders: Optional[list[str]] = None
+    selection_metadata: Optional[SelectionMetadata] = None
+
+    def __post_init__(self) -> None:
+        """Normalize backup_mode when selected_folders are explicitly supplied."""
+        if self.selected_folders is not None and self.backup_mode == "full":
+            self.backup_mode = "select"
 
 
 class ConfigManager:

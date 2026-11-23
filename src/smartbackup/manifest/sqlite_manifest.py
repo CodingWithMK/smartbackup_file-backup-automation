@@ -5,6 +5,7 @@ Designed for large backups (100,000+ files) where loading and writing a single
 monolithic JSON document becomes slow or memory-heavy.
 """
 
+import json
 import sqlite3
 import sys
 from datetime import datetime
@@ -16,6 +17,7 @@ from smartbackup.manifest.base import (
     ManifestEntry,
     ManifestFormat,
     ManifestManager,
+    SelectiveBackupRecord,
 )
 
 _SCHEMA_SQL = """
@@ -32,7 +34,39 @@ CREATE TABLE IF NOT EXISTS files (
     permissions   INTEGER NOT NULL,
     backed_up_at  REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS selective_backups (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id                  TEXT    NOT NULL,
+    timestamp               TEXT    NOT NULL,
+    command_option          TEXT    NOT NULL DEFAULT '--select',
+    scope                   TEXT    NOT NULL DEFAULT 'folders',
+    source_root             TEXT    NOT NULL DEFAULT '',
+    selected_folders        TEXT    NOT NULL DEFAULT '[]',
+    available_folders_count INTEGER NOT NULL DEFAULT 0,
+    files_scanned           INTEGER NOT NULL DEFAULT 0,
+    files_copied            INTEGER NOT NULL DEFAULT 0,
+    files_updated           INTEGER NOT NULL DEFAULT 0,
+    files_deleted           INTEGER NOT NULL DEFAULT 0,
+    files_skipped           INTEGER NOT NULL DEFAULT 0,
+    bytes_copied            INTEGER NOT NULL DEFAULT 0,
+    duration_seconds        REAL    NOT NULL DEFAULT 0.0,
+    workflow_steps          TEXT    NOT NULL DEFAULT '[]'
+);
 """
+
+
+def _safe_json_list(raw: Optional[str]) -> list[str]:
+    """Decode a JSON-encoded list of strings, falling back to an empty list."""
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return []
 
 
 class SqliteManifestManager(ManifestManager):
@@ -82,6 +116,8 @@ class SqliteManifestManager(ManifestManager):
                 hostname=meta.get("hostname", ""),
                 hash_algorithm=meta.get("hash_algorithm", "sha256"),
                 backup_count=int(meta.get("backup_count", "0")),
+                last_backup_mode=meta.get("last_backup_mode", "full"),
+                last_selected_folders=_safe_json_list(meta.get("last_selected_folders")),
             )
 
             file_rows = cursor.execute(
@@ -97,6 +133,43 @@ class SqliteManifestManager(ManifestManager):
                     permissions=int(permissions),
                     backed_up_at=float(backed_up_at),
                 )
+
+            # Backward-compatible load of dedicated selective_backups table
+            has_selective_table = (
+                cursor.execute(
+                    "SELECT 1 FROM sqlite_master "
+                    "WHERE type = 'table' AND name = 'selective_backups'"
+                ).fetchone()
+                is not None
+            )
+            if has_selective_table:
+                selective_rows = cursor.execute(
+                    "SELECT run_id, timestamp, command_option, scope, source_root, "
+                    "selected_folders, available_folders_count, files_scanned, "
+                    "files_copied, files_updated, files_deleted, files_skipped, "
+                    "bytes_copied, duration_seconds, workflow_steps "
+                    "FROM selective_backups ORDER BY id ASC"
+                ).fetchall()
+                for row in selective_rows:
+                    manifest.selective_backups.append(
+                        SelectiveBackupRecord(
+                            run_id=str(row[0]),
+                            timestamp=datetime.fromisoformat(row[1]),
+                            command_option=str(row[2]),
+                            scope=str(row[3]),
+                            source_root=str(row[4]),
+                            selected_folders=_safe_json_list(row[5]),
+                            available_folders_count=int(row[6]),
+                            files_scanned=int(row[7]),
+                            files_copied=int(row[8]),
+                            files_updated=int(row[9]),
+                            files_deleted=int(row[10]),
+                            files_skipped=int(row[11]),
+                            bytes_copied=int(row[12]),
+                            duration_seconds=float(row[13]),
+                            workflow_steps=_safe_json_list(row[14]),
+                        )
+                    )
 
             return manifest
         except (sqlite3.Error, OSError, ValueError) as e:
@@ -138,6 +211,8 @@ class SqliteManifestManager(ManifestManager):
                 ("hostname", str(manifest.hostname)),
                 ("hash_algorithm", str(manifest.hash_algorithm)),
                 ("backup_count", str(manifest.backup_count)),
+                ("last_backup_mode", str(manifest.last_backup_mode)),
+                ("last_selected_folders", json.dumps(list(manifest.last_selected_folders))),
             ]
 
             entry_rows = [
@@ -152,6 +227,27 @@ class SqliteManifestManager(ManifestManager):
                 for entry in manifest.entries.values()
             ]
 
+            selective_rows = [
+                (
+                    rec.run_id,
+                    rec.timestamp.isoformat(),
+                    rec.command_option,
+                    rec.scope,
+                    rec.source_root,
+                    json.dumps(list(rec.selected_folders)),
+                    rec.available_folders_count,
+                    rec.files_scanned,
+                    rec.files_copied,
+                    rec.files_updated,
+                    rec.files_deleted,
+                    rec.files_skipped,
+                    rec.bytes_copied,
+                    rec.duration_seconds,
+                    json.dumps(list(rec.workflow_steps)),
+                )
+                for rec in manifest.selective_backups
+            ]
+
             with conn:
                 conn.executemany(
                     "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
@@ -163,6 +259,16 @@ class SqliteManifestManager(ManifestManager):
                     "VALUES (?, ?, ?, ?, ?, ?)",
                     entry_rows,
                 )
+                if selective_rows:
+                    conn.executemany(
+                        "INSERT INTO selective_backups ("
+                        "run_id, timestamp, command_option, scope, source_root, "
+                        "selected_folders, available_folders_count, files_scanned, "
+                        "files_copied, files_updated, files_deleted, files_skipped, "
+                        "bytes_copied, duration_seconds, workflow_steps"
+                        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        selective_rows,
+                    )
 
             conn.close()
             conn = None
