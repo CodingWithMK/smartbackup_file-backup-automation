@@ -11,12 +11,14 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+from smartbackup._version import __version__
 from smartbackup.config import DEFAULT_EXCLUSIONS, BackupConfig
 from smartbackup.core.engine import BackupEngine, DryRunBackupEngine
 from smartbackup.handlers import FallbackHandler
 from smartbackup.platform.devices import DeviceDetector
 from smartbackup.platform.identity import get_device_name
 from smartbackup.platform.resolver import PathResolver
+from smartbackup.platform.runtime import ensure_utf8_console
 from smartbackup.ui.logger import BackupLogger
 
 
@@ -135,6 +137,7 @@ class SmartBackup:
         from rich.align import Align
         from rich.console import Group
 
+        ensure_utf8_console()
         art = Text()
         art.append(
             "███████╗███╗   ███╗ █████╗ ██████╗ ████████╗  ██████╗  █████╗  ██████╗██╗  ██╗██╗   ██╗██████╗\n"
@@ -148,7 +151,7 @@ class SmartBackup:
 
         subtitle = Text(justify="center")
         subtitle.append("\n\n", style="")
-        subtitle.append("Intelligent Backup System v0.8.0\n", style="bold white")
+        subtitle.append(f"Intelligent Backup System v{__version__}\n", style="bold white")
         subtitle.append("Cross-Platform  •  Incremental  •  Efficient", style="dim")
 
         content = Group(Align.center(art), subtitle)

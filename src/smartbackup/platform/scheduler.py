@@ -3,13 +3,14 @@ SchedulerHelper - Helps set up automatic backups.
 """
 
 import platform
-import sys
 from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
+
+from smartbackup.platform.runtime import build_cli_command
 
 
 class SchedulerHelper:
@@ -40,7 +41,12 @@ class SchedulerHelper:
         """Creates Windows Scheduled Task."""
         console = Console(highlight=False)
         task_name = "SmartBackup"
-        python_path = sys.executable
+        cli_cmd = build_cli_command()
+        program_path = cli_cmd[0]
+        arguments = " ".join(cli_cmd[1:])
+        tr_value = (
+            f'\\"{program_path}\\" {arguments}' if arguments else f'\\"{program_path}\\"'
+        )
 
         instructions = (
             f"[bold]To set up automatic backup on Windows:[/bold]\n\n"
@@ -49,14 +55,14 @@ class SchedulerHelper:
             f"   - Name: [cyan]{task_name}[/cyan]\n"
             f"   - Trigger: Daily / Every {interval_hours} hours\n"
             f"   - Action: Start a program\n"
-            f"     - Program: [cyan]{python_path}[/cyan]\n"
-            f"     - Arguments: [cyan]-m smartbackup[/cyan]\n\n"
+            f"     - Program: [cyan]{program_path}[/cyan]\n"
+            f"     - Arguments: [cyan]{arguments or '(none)'}[/cyan]\n\n"
             f"Or run the following command as Administrator:"
         )
 
         cmd = (
             f'schtasks /create /tn "{task_name}" '
-            f'/tr "\\"{python_path}\\" -m smartbackup" '
+            f'/tr "{tr_value}" '
             f"/sc hourly /mo {interval_hours}"
         )
 
@@ -71,6 +77,9 @@ class SchedulerHelper:
         console = Console(highlight=False)
         plist_path = Path.home() / "Library" / "LaunchAgents" / "com.smartbackup.plist"
         interval_seconds = interval_hours * 3600
+        program_args_xml = "\n".join(
+            f"        <string>{arg}</string>" for arg in build_cli_command()
+        )
 
         plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -80,9 +89,7 @@ class SchedulerHelper:
     <string>com.smartbackup</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{sys.executable}</string>
-        <string>-m</string>
-        <string>smartbackup</string>
+{program_args_xml}
     </array>
     <key>StartInterval</key>
     <integer>{interval_seconds}</integer>
@@ -109,13 +116,14 @@ class SchedulerHelper:
         """Shows cron setup for Linux."""
         console = Console(highlight=False)
         cron_schedule = f"0 */{interval_hours} * * *" if interval_hours < 24 else "0 9 * * *"
+        exec_cmd = " ".join(build_cli_command())
 
         service_content = f"""[Unit]
 Description=Smart Backup Service
 
 [Service]
 Type=oneshot
-ExecStart={sys.executable} -m smartbackup"""
+ExecStart={exec_cmd}"""
 
         timer_content = f"""[Unit]
 Description=Run Smart Backup every {interval_hours} hours
@@ -132,7 +140,7 @@ WantedBy=timers.target"""
             f"[bold]Option 1 - Cron:[/bold]\n"
             f"  1. Open crontab: [cyan]crontab -e[/cyan]\n"
             f"  2. Add the following line:\n"
-            f"     [cyan]{cron_schedule} {sys.executable} -m smartbackup[/cyan]\n\n"
+            f"     [cyan]{cron_schedule} {exec_cmd}[/cyan]\n\n"
             f"[bold]Option 2 - Systemd:[/bold]\n"
             f"  Create the service and timer files shown below,\n"
             f"  then enable with:\n"
@@ -166,14 +174,13 @@ WantedBy=timers.target"""
             Tuple of (success: bool, message: str)
         """
         system = platform.system()
-        py_exe = python_exe or sys.executable
 
         if system == "Darwin":
-            return SchedulerHelper._install_macos_daemon(py_exe)
+            return SchedulerHelper._install_macos_daemon(python_exe)
         elif system == "Windows":
-            return SchedulerHelper._install_windows_daemon(py_exe)
+            return SchedulerHelper._install_windows_daemon(python_exe)
         else:
-            return SchedulerHelper._install_linux_daemon(py_exe)
+            return SchedulerHelper._install_linux_daemon(python_exe)
 
     @staticmethod
     def uninstall_daemon_service() -> tuple[bool, str]:
@@ -216,13 +223,18 @@ WantedBy=timers.target"""
         return Path.home() / "Library" / "LaunchAgents" / "com.smartbackup.watcher.plist"
 
     @staticmethod
-    def _install_macos_daemon(py_exe: str) -> tuple[bool, str]:
+    def _install_macos_daemon(py_exe: Optional[str]) -> tuple[bool, str]:
         import subprocess
 
         plist_path = SchedulerHelper._get_macos_plist_path()
         log_dir = Path.home() / ".config" / "smartbackup" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         plist_path.parent.mkdir(parents=True, exist_ok=True)
+
+        program_args_xml = "\n".join(
+            f"        <string>{arg}</string>"
+            for arg in build_cli_command("watch", python_exe=py_exe)
+        )
 
         plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -232,10 +244,7 @@ WantedBy=timers.target"""
     <string>com.smartbackup.watcher</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{py_exe}</string>
-        <string>-m</string>
-        <string>smartbackup</string>
-        <string>watch</string>
+{program_args_xml}
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -325,13 +334,15 @@ WantedBy=timers.target"""
     # --- Windows Daemon Implementation ---
 
     @staticmethod
-    def _install_windows_daemon(py_exe: str) -> tuple[bool, str]:
+    def _install_windows_daemon(py_exe: Optional[str]) -> tuple[bool, str]:
         import subprocess
 
         task_name = "SmartBackupWatcher"
+        cli_cmd = build_cli_command("watch", python_exe=py_exe)
+        tr_args = " ".join(cli_cmd[1:])
         cmd = (
             f'schtasks /create /tn "{task_name}" '
-            f'/tr "\\"{py_exe}\\" -m smartbackup watch" '
+            f'/tr "\\"{cli_cmd[0]}\\" {tr_args}" '
             f'/sc onlogon /rl highest /f'
         )
         try:
@@ -399,11 +410,12 @@ WantedBy=timers.target"""
         return Path.home() / ".config" / "systemd" / "user" / "smartbackup-watcher.service"
 
     @staticmethod
-    def _install_linux_daemon(py_exe: str) -> tuple[bool, str]:
+    def _install_linux_daemon(py_exe: Optional[str]) -> tuple[bool, str]:
         import subprocess
 
         service_path = SchedulerHelper._get_linux_service_path()
         service_path.parent.mkdir(parents=True, exist_ok=True)
+        exec_cmd = " ".join(build_cli_command("watch", python_exe=py_exe))
 
         service_content = f"""[Unit]
 Description=SmartBackup USB Auto-Detect Daemon
@@ -411,7 +423,7 @@ After=default.target
 
 [Service]
 Type=simple
-ExecStart={py_exe} -m smartbackup watch
+ExecStart={exec_cmd}
 Restart=always
 RestartSec=5s
 
