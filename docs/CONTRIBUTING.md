@@ -27,19 +27,21 @@ Thanks for your interest in contributing! 🎉
 
 ## Translating Documentation
 
-`README.md` at the repository root is always the canonical English version. Localized READMEs
-live under `docs/i18n/` using ISO 639-1 language codes (for example, `docs/i18n/README.tr.md`
-and `docs/i18n/README.de.md`).
+`README.md` and `docs/USER_GUIDE.md` are always the canonical English versions. Localized
+documents live under `docs/i18n/` using ISO 639-1 language codes (for example,
+`docs/i18n/README.tr.md`, `docs/i18n/USER_GUIDE.tr.md`, `docs/i18n/README.de.md`, and
+`docs/i18n/USER_GUIDE.de.md`).
 
 When updating or adding a translation:
 
 1. Keep CLI commands, flags, file names, and URLs verbatim; translate prose and inline `#` comments.
-2. Update the language switcher bar in `README.md` and every `docs/i18n/README.*.md` file using
-   native language names (e.g., `English`, `Türkçe`, `Deutsch`), bolding the active language.
-3. Update the invisible HTML sync header (`<!-- Source: README.md | Version: ... -->`) at the top
-   of the translated file.
+2. Update the language switcher bar in `README.md`, `docs/USER_GUIDE.md`, and all localized files
+   under `docs/i18n/` using native language names (`English`, `Türkçe`, `Deutsch`), bolding the
+   active language.
+3. Update the invisible HTML sync header (`<!-- Source: ... | Version: ... -->`) at the top of the
+   translated file.
 4. Run `pytest tests/unit/test_docs_i18n.py` to verify all cross-language links, relative paths,
-   internal heading anchors, version parity, and CLI command coverage.
+   heading anchors (internal and cross-file), version parity, and CLI command coverage.
 
 ## Questions?
 

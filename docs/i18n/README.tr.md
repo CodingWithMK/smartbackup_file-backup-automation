@@ -17,14 +17,14 @@
 
 [Özellikler](#-özellikler) •
 [Hızlı Başlangıç](#-hızlı-başlangıç) •
-[📖 Kullanıcı Kılavuzu (İngilizce)](../USER_GUIDE.md) •
+[📖 Kullanıcı Kılavuzu](USER_GUIDE.tr.md) •
 [Katkıda Bulunma](#-katkıda-bulunma)
 
 </div>
 
 ---
 
-> # 📖 **Tam dokümantasyon: [SmartBackup Kullanıcı Kılavuzu (İngilizce)](../USER_GUIDE.md)**
+> # 📖 **Tam dokümantasyon: [SmartBackup Kullanıcı Kılavuzu](USER_GUIDE.tr.md)**
 > Kurulum (`pip` / `uv` / geliştirme ortamı), **tüm CLI komutları ve parametreleri**, artımlı manifest
 > yönetimi, otomatik sürücü izleyici ve arka plan servisi, geri yükleme ve kurtarma, yapılandırma ve
 > platformlar arası sorun giderme — hepsi tek bir yerde.
@@ -169,7 +169,7 @@ smartbackup daemon install                    # arka plan izleyici servisi (stat
 smartbackup schedule --hours 24               # işletim sistemine özel zamanlanmış yedekleme komutlarını yazdır
 ```
 
-Tüm açıklamalar, seçenekler ve kullanım senaryoları: **[Kullanıcı Kılavuzu (İngilizce) →](../USER_GUIDE.md)**
+Tüm açıklamalar, seçenekler ve kullanım senaryoları: **[Kullanıcı Kılavuzu →](USER_GUIDE.tr.md)**
 
 <details>
 <summary><b>Varsayılan olarak neler hariç tutulur?</b></summary>
@@ -181,7 +181,7 @@ Tüm açıklamalar, seçenekler ve kullanım senaryoları: **[Kullanıcı Kılav
 artıkları (`.DS_Store`, `Thumbs.db`, `desktop.ini`) — ayrıca yapısal olarak Python sanal ortamı
 olduğu algılanan tüm dizinler.
 
-Tam liste: [Kullanıcı Kılavuzu → Appendix B (İngilizce)](../USER_GUIDE.md#b-default-exclusions)
+Tam liste: [Kullanıcı Kılavuzu → Ek B](USER_GUIDE.tr.md#b-varsayılan-hariç-tutulanlar)
 
 </details>
 

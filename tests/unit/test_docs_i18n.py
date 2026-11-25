@@ -1,9 +1,10 @@
 """
-Unit tests for multi-language README localization (English default + Turkish & German).
+Unit tests for multi-language documentation localization (English default + Turkish & German).
 
-Ensures cross-language switcher links, relative file links, internal GitHub heading
-anchors, package version parity, and CLI command coverage stay in sync across all
-localized READMEs.
+Covers both README.md and docs/USER_GUIDE.md along with their localized counterparts under
+docs/i18n/. Ensures cross-language switcher links, relative file links, internal and
+cross-file GitHub heading anchors, package version parity, and CLI command coverage stay
+in sync across all languages.
 """
 
 import re
@@ -20,6 +21,16 @@ README_FILES = {
     "tr": REPO_ROOT / "docs" / "i18n" / "README.tr.md",
     "de": REPO_ROOT / "docs" / "i18n" / "README.de.md",
 }
+USER_GUIDE_FILES = {
+    "en": REPO_ROOT / "docs" / "USER_GUIDE.md",
+    "tr": REPO_ROOT / "docs" / "i18n" / "USER_GUIDE.tr.md",
+    "de": REPO_ROOT / "docs" / "i18n" / "USER_GUIDE.de.md",
+}
+ALL_LOCALIZED_DOCS = [
+    ("readme", lang, path) for lang, path in README_FILES.items()
+] + [
+    ("user_guide", lang, path) for lang, path in USER_GUIDE_FILES.items()
+]
 
 _MD_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 _HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)\s*$", re.MULTILINE)
@@ -28,7 +39,6 @@ _HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)\s*$", re.MULTILINE)
 def _github_heading_slug(heading: str) -> str:
     """Compute a GitHub-compatible Markdown heading anchor slug (preserving Unicode letters)."""
     text = heading.strip().lower()
-    # Strip markdown formatting wrappers
     text = re.sub(r"[`*_~]", "", text)
     chars: list[str] = []
     for ch in text:
@@ -60,28 +70,29 @@ def _extract_heading_slugs(markdown: str) -> set[str]:
     return slugs
 
 
-class TestReadmeLocalization:
-    """Contract checks for README.md (English) and docs/i18n/README.{tr,de}.md."""
+class TestDocsLocalization:
+    """Contract checks for localized READMEs and User Guides (en, tr, de)."""
 
-    @pytest.mark.parametrize("lang", ["en", "tr", "de"])
-    def test_readme_exists_and_contains_language_switcher(self, lang: str) -> None:
-        path = README_FILES[lang]
-        assert path.is_file(), f"Missing README for language {lang!r}: {path}"
+    @pytest.mark.parametrize(("doc_kind", "lang", "path"), ALL_LOCALIZED_DOCS)
+    def test_doc_exists_and_contains_language_switcher(
+        self, doc_kind: str, lang: str, path: Path
+    ) -> None:
+        assert path.is_file(), f"Missing {doc_kind} for language {lang!r}: {path}"
         content = path.read_text(encoding="utf-8")
 
         assert "English" in content
         assert "Türkçe" in content
         assert "Deutsch" in content
 
-        # Active language is bolded, not a broken self-link
         active_label = {"en": "**English**", "tr": "**Türkçe**", "de": "**Deutsch**"}[lang]
         assert active_label in content
 
-    @pytest.mark.parametrize("lang", ["en", "tr", "de"])
-    def test_all_relative_file_links_and_internal_anchors_resolve(self, lang: str) -> None:
-        path = README_FILES[lang]
+    @pytest.mark.parametrize(("doc_kind", "lang", "path"), ALL_LOCALIZED_DOCS)
+    def test_all_relative_links_and_anchors_resolve(
+        self, doc_kind: str, lang: str, path: Path
+    ) -> None:
         content = path.read_text(encoding="utf-8")
-        headings = _extract_heading_slugs(content)
+        local_headings = _extract_heading_slugs(content)
 
         for target in _MD_LINK_RE.findall(content):
             if target.startswith(("http://", "https://", "mailto:")):
@@ -90,26 +101,36 @@ class TestReadmeLocalization:
                 continue
             if target.startswith("#"):
                 anchor = target[1:]
-                assert anchor in headings, (
-                    f"{path.name}: internal anchor '#{anchor}' not found in headings {sorted(headings)}"
+                assert anchor in local_headings, (
+                    f"{path.name}: internal anchor '#{anchor}' not found in {sorted(local_headings)}"
                 )
                 continue
 
-            file_part = target.split("#", 1)[0]
+            if "#" in target:
+                file_part, anchor = target.split("#", 1)
+            else:
+                file_part, anchor = target, None
+
             resolved = (path.parent / file_part).resolve()
             assert resolved.exists(), (
                 f"{path.name}: relative link '{target}' resolved to missing path {resolved}"
             )
+            if anchor and resolved.suffix.lower() == ".md":
+                target_headings = _extract_heading_slugs(resolved.read_text(encoding="utf-8"))
+                assert anchor in target_headings, (
+                    f"{path.name}: cross-file anchor '{target}' not found in {resolved.name}"
+                )
 
     @pytest.mark.parametrize("lang", ["en", "tr", "de"])
-    def test_version_and_cli_command_parity(self, lang: str) -> None:
+    def test_readme_version_cli_and_user_guide_link_parity(self, lang: str) -> None:
         content = README_FILES[lang].read_text(encoding="utf-8")
 
-        # Must reference the single-source package version in both --version and pinned installer
         assert f"smartbackup {__version__}" in content
         assert f"v{__version__}" in content
 
-        # Core CLI commands, flags, and installer URLs must remain verbatim across all languages
+        expected_guide = {"en": "docs/USER_GUIDE.md", "tr": "USER_GUIDE.tr.md", "de": "USER_GUIDE.de.md"}[lang]
+        assert expected_guide in content
+
         required_tokens = [
             "scripts/install.sh",
             "scripts/install.ps1",
@@ -128,3 +149,29 @@ class TestReadmeLocalization:
         ]
         for token in required_tokens:
             assert token in content, f"{lang} README missing required token: {token!r}"
+
+    @pytest.mark.parametrize("lang", ["en", "tr", "de"])
+    def test_user_guide_version_and_cli_section_parity(self, lang: str) -> None:
+        content = USER_GUIDE_FILES[lang].read_text(encoding="utf-8")
+
+        assert f"smartbackup {__version__}" in content
+
+        required_tokens = [
+            "smartbackup --select",
+            "smartbackup --select --dry-run",
+            "smartbackup --dry-run",
+            "--manifest-format",
+            "selective_backups",
+            "--notify",
+            "smartbackup restore",
+            "--conflict rename",
+            "smartbackup compress",
+            "smartbackup watch",
+            "smartbackup schedule",
+            "smartbackup config",
+            "smartbackup daemon install",
+            "smartbackup daemon clear-state",
+            "DEFAULT_EXCLUSIONS",
+        ]
+        for token in required_tokens:
+            assert token in content, f"{lang} USER_GUIDE missing required token: {token!r}"

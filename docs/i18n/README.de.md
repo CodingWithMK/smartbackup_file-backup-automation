@@ -17,14 +17,14 @@ Sichere deine wichtigen Dateien automatisch und überspringe dabei `node_modules
 
 [Funktionen](#-funktionen) •
 [Schnellstart](#-schnellstart) •
-[📖 Benutzerhandbuch (Englisch)](../USER_GUIDE.md) •
+[📖 Benutzerhandbuch](USER_GUIDE.de.md) •
 [Mitwirken](#-mitwirken)
 
 </div>
 
 ---
 
-> # 📖 **Vollständige Dokumentation: [SmartBackup Benutzerhandbuch (Englisch)](../USER_GUIDE.md)**
+> # 📖 **Vollständige Dokumentation: [SmartBackup Benutzerhandbuch](USER_GUIDE.de.md)**
 > Installation (`pip` / `uv` / Entwicklung), **alle CLI-Befehle und Optionen**, inkrementelle
 > Manifeste, Auto-Detect-Watcher & Hintergrunddienst, Wiederherstellung, Konfiguration und
 > plattformübergreifende Fehlerbehebung — alles an einem Ort.
@@ -170,7 +170,7 @@ smartbackup daemon install                    # Hintergrunddienst installieren (
 smartbackup schedule --hours 24               # OS-spezifische Anleitung für geplante Backups ausgeben
 ```
 
-Alle Erklärungen, Optionen und Praxisbeispiele: **[Benutzerhandbuch (Englisch) →](../USER_GUIDE.md)**
+Alle Erklärungen, Optionen und Praxisbeispiele: **[Benutzerhandbuch →](USER_GUIDE.de.md)**
 
 <details>
 <summary><b>Was wird standardmäßig ausgeschlossen?</b></summary>
@@ -182,7 +182,7 @@ Alle Erklärungen, Optionen und Praxisbeispiele: **[Benutzerhandbuch (Englisch) 
 (`.DS_Store`, `Thumbs.db`, `desktop.ini`) — sowie jedes Verzeichnis, das strukturell wie eine
 virtuelle Python-Umgebung aussieht.
 
-Vollständige Liste: [Benutzerhandbuch → Appendix B (Englisch)](../USER_GUIDE.md#b-default-exclusions)
+Vollständige Liste: [Benutzerhandbuch → Anhang B](USER_GUIDE.de.md#b-standard-ausschlüsse)
 
 </details>
 

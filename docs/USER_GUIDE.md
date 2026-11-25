@@ -2,6 +2,8 @@
 
 **Version tested against: `smartbackup 0.9.0`** · Platforms: Windows · macOS · Linux · Python 3.9+
 
+🌐 **English** · [Türkçe](i18n/USER_GUIDE.tr.md) · [Deutsch](i18n/USER_GUIDE.de.md)
+
 This guide is the single source of truth for using SmartBackup. Every command, flag, default
 value, file path, and behavior documented here was taken from (or verified against) the
 project source code.
