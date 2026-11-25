@@ -17,6 +17,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 
+from smartbackup._version import __version__
 from smartbackup.backup import SmartBackup
 from smartbackup.config import EXCLUDED_EXTENSIONS, ConfigManager
 from smartbackup.core.scanner import ExclusionFilter
@@ -28,13 +29,12 @@ from smartbackup.manifest.factory import (
 from smartbackup.models import SelectionMetadata
 from smartbackup.platform.identity import get_device_name, sanitize_device_name
 from smartbackup.platform.resolver import PathResolver
+from smartbackup.platform.runtime import ensure_utf8_console
 from smartbackup.platform.scheduler import SchedulerHelper
 from smartbackup.platform.terminal import TerminalSpawner
 from smartbackup.platform.watcher import DeviceWatcher
 from smartbackup.ui.logger import BackupLogger
 from smartbackup.ui.selector import FolderSelector
-
-__version__ = "0.9.0"
 
 console = Console(highlight=False)
 
@@ -1283,6 +1283,7 @@ def main() -> int:
     Returns:
         Exit code (0 for success, non-zero for errors)
     """
+    ensure_utf8_console()
     try:
         result = app(standalone_mode=False)
         # typer.Exit(code=N) with standalone_mode=False returns N

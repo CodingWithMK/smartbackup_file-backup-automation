@@ -42,9 +42,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/smartbackup_file-backup-automation"
-Repository = "https://github.com/yourusername/smartbackup_file-backup-automation"
-Issues = "https://github.com/yourusername/smartbackup_file-backup-automation/issues"
+Homepage = "https://github.com/CodingWithMK/smartbackup_file-backup-automation"
+Repository = "https://github.com/CodingWithMK/smartbackup_file-backup-automation"
+Issues = "https://github.com/CodingWithMK/smartbackup_file-backup-automation/issues"
 
 [project.scripts]
 smartbackup = "smartbackup:main"

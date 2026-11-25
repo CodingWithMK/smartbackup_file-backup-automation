@@ -23,13 +23,17 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENTRY_POINT = REPO_ROOT / "main.py"
+BINARY_OVERRIDE = os.environ.get("SMARTBACKUP_BINARY")
 DEVICE = "SmokeBox"
 TIMEOUT_SECONDS = 120
 
 pytestmark = [
     pytest.mark.sandbox,
     pytest.mark.smoke,
-    pytest.mark.skipif(not ENTRY_POINT.exists(), reason="main.py entry point not found"),
+    pytest.mark.skipif(
+        not BINARY_OVERRIDE and not ENTRY_POINT.exists(),
+        reason="main.py entry point not found and SMARTBACKUP_BINARY not set",
+    ),
 ]
 
 
@@ -52,8 +56,9 @@ def _config_file(sandbox_root: Path) -> Path:
 
 
 def _cli(args: list, env: dict) -> subprocess.CompletedProcess:
+    cmd = [BINARY_OVERRIDE, *args] if BINARY_OVERRIDE else [sys.executable, str(ENTRY_POINT), *args]
     return subprocess.run(
-        [sys.executable, str(ENTRY_POINT), *args],
+        cmd,
         cwd=str(REPO_ROOT),
         env=env,
         capture_output=True,

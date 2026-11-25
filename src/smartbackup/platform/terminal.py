@@ -5,21 +5,23 @@ TerminalSpawner - Cross-platform interactive terminal window spawner.
 import logging
 import os
 import platform
+import shlex
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from typing import Optional
 
 from smartbackup.config import ConfigManager
+from smartbackup.platform.runtime import build_cli_command
 
 logger = logging.getLogger(__name__)
 
 
 class TerminalSpawner:
     """
-    Spawns an interactive native terminal session executing:
-    `python -m smartbackup --target <mount_path> --prompt`
+    Spawns an interactive native terminal session executing SmartBackup
+    with ``--target <mount_path> --prompt`` (directly when running as a
+    frozen standalone binary, or via ``python -m smartbackup`` otherwise).
     """
 
     def __init__(self, config_manager: Optional[ConfigManager] = None) -> None:
@@ -53,40 +55,33 @@ class TerminalSpawner:
             logger.info(f"Headless environment detected; skipping GUI terminal spawn for {target_path}")
             return False
 
-        py_exe = python_exe or sys.executable
         system = platform.system()
 
         try:
             if system == "Windows":
-                return self._spawn_windows(target_path, py_exe)
+                return self._spawn_windows(target_path, python_exe)
             elif system == "Darwin":
-                return self._spawn_macos(target_path, py_exe)
+                return self._spawn_macos(target_path, python_exe)
             else:
-                return self._spawn_linux(target_path, py_exe)
+                return self._spawn_linux(target_path, python_exe)
         except Exception as e:
             logger.error(f"Failed to spawn interactive terminal: {e}")
             return False
 
-    def _spawn_windows(self, target_path: Path, python_exe: str) -> bool:
+    def _spawn_windows(self, target_path: Path, python_exe: Optional[str]) -> bool:
         """Spawn terminal on Windows (wt.exe -> cmd.exe -> powershell.exe)."""
         title = "SmartBackup - Auto-Detect Backup"
         target_str = str(target_path)
+        cli_cmd = build_cli_command("--target", target_str, "--prompt", python_exe=python_exe)
+        exe = cli_cmd[0]
+        extra_args = cli_cmd[1:-3]  # ["-m", "smartbackup"] or [] when frozen
+        extra_str = f" {' '.join(extra_args)}" if extra_args else ""
 
         # 1. Try Windows Terminal (wt.exe)
         wt_path = shutil.which("wt.exe") or shutil.which("wt")
         if wt_path:
             try:
-                cmd = [
-                    wt_path,
-                    "--title",
-                    title,
-                    python_exe,
-                    "-m",
-                    "smartbackup",
-                    "--target",
-                    target_str,
-                    "--prompt",
-                ]
+                cmd = [wt_path, "--title", title, *cli_cmd]
                 subprocess.Popen(cmd)
                 return True
             except Exception as e:
@@ -95,9 +90,8 @@ class TerminalSpawner:
         # 2. Fallback to cmd.exe
         cmd_path = shutil.which("cmd.exe") or "cmd.exe"
         try:
-            # cmd.exe /c start "title" python -m smartbackup --target <path> --prompt
             full_cmd = (
-                f'start "{title}" "{python_exe}" -m smartbackup --target "{target_str}" --prompt'
+                f'start "{title}" "{exe}"{extra_str} --target "{target_str}" --prompt'
             )
             subprocess.Popen(f"{cmd_path} /c {full_cmd}", shell=True)
             return True
@@ -111,7 +105,7 @@ class TerminalSpawner:
                 ps_path,
                 "-NoExit",
                 "-Command",
-                f"& '{python_exe}' -m smartbackup --target '{target_str}' --prompt",
+                f"& '{exe}'{extra_str} --target '{target_str}' --prompt",
             ]
             subprocess.Popen(ps_cmd)
             return True
@@ -119,10 +113,14 @@ class TerminalSpawner:
             logger.error(f"All Windows terminal spawners failed: {e}")
             return False
 
-    def _spawn_macos(self, target_path: Path, python_exe: str) -> bool:
+    def _spawn_macos(self, target_path: Path, python_exe: Optional[str]) -> bool:
         """Spawn terminal on macOS via AppleScript / Terminal.app / iTerm2."""
         target_str = str(target_path)
-        shell_cmd = f'{python_exe} -m smartbackup --target "{target_str}" --prompt'
+        cli_cmd = build_cli_command("--target", target_str, "--prompt", python_exe=python_exe)
+        exe = cli_cmd[0]
+        extra_args = cli_cmd[1:-3]
+        extra_str = f" {' '.join(extra_args)}" if extra_args else ""
+        shell_cmd = f'{exe}{extra_str} --target "{target_str}" --prompt'
         # Escape quotes for AppleScript
         escaped_shell_cmd = shell_cmd.replace('\\', '\\\\').replace('"', '\\"')
 
@@ -165,7 +163,6 @@ class TerminalSpawner:
 
         # 3. Fallback: Create temporary launcher command file and use `open`
         try:
-            # We can invoke Terminal.app using open command
             open_cmd = [
                 "open",
                 "-a",
@@ -177,11 +174,11 @@ class TerminalSpawner:
             logger.error(f"macOS terminal spawner failed: {e}")
             return False
 
-    def _spawn_linux(self, target_path: Path, python_exe: str) -> bool:
+    def _spawn_linux(self, target_path: Path, python_exe: Optional[str]) -> bool:
         """Spawn terminal on Linux across supported terminal emulators."""
         target_str = str(target_path)
-        prompt_args = [python_exe, "-m", "smartbackup", "--target", target_str, "--prompt"]
-        prompt_cmd_str = f"{python_exe} -m smartbackup --target '{target_str}' --prompt"
+        prompt_args = build_cli_command("--target", target_str, "--prompt", python_exe=python_exe)
+        prompt_cmd_str = " ".join(shlex.quote(arg) for arg in prompt_args)
 
         # Check configured preferred terminal first
         preferred = self.config_manager.get_preferred_terminal()

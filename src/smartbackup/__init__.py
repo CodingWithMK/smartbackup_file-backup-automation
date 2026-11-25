@@ -16,11 +16,11 @@ Quick Start:
     >>> backup.run()
 """
 
-__version__ = "0.9.0"
 __author__ = "Muhammed Musab Kaya - @CodingWithMK"
 __license__ = "MIT"
 
 # Import from new modular structure
+from smartbackup._version import __version__
 from smartbackup.backup import SmartBackup
 from smartbackup.cli import main
 from smartbackup.config import DEFAULT_EXCLUSIONS, EXCLUDED_EXTENSIONS, BackupConfig, ConfigManager
