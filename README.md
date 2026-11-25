@@ -11,6 +11,8 @@ Automatically backup your important files while skipping `node_modules`, virtual
 [![CI](https://github.com/CodingWithMK/smartbackup_file-backup-automation/actions/workflows/ci.yml/badge.svg)](https://github.com/CodingWithMK/smartbackup_file-backup-automation/actions)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](/)
 
+🌐 **English** · [Türkçe](docs/i18n/README.tr.md) · [Deutsch](docs/i18n/README.de.md)
+
 [Features](#-features) •
 [Quick Start](#-quick-start) •
 [📖 User Guide](docs/USER_GUIDE.md) •
