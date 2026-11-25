@@ -14,6 +14,7 @@ Registered markers: `sandbox`, `smoke`. Run only this layer with:
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -37,11 +38,22 @@ pytestmark = [
 ]
 
 
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI SGR/CSI color codes from captured CLI output."""
+    return _ANSI_ESCAPE_RE.sub("", text)
+
+
 def _sandbox_env(sandbox_root: Path) -> dict:
     """Environment with a redirected config directory and UTF-8 output."""
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
+    env["NO_COLOR"] = "1"
+    env.pop("FORCE_COLOR", None)
+    env.pop("PY_COLORS", None)
     if platform.system() == "Windows":
         env["APPDATA"] = str(sandbox_root / "appdata")
     else:
@@ -97,11 +109,12 @@ class TestCliSurfaceSmoke:
 
         help_out = _cli(["--help"], env)
         _assert_ok(help_out)
-        assert "--dry-run" in help_out.stdout
-        assert "--select" in help_out.stdout
-        assert "--exclude" in help_out.stdout
-        assert "--manifest-format" in help_out.stdout
-        assert "--notify" in help_out.stdout
+        clean_help = _strip_ansi(help_out.stdout)
+        assert "--dry-run" in clean_help
+        assert "--select" in clean_help
+        assert "--exclude" in clean_help
+        assert "--manifest-format" in clean_help
+        assert "--notify" in clean_help
 
 
 class TestDryRunLifecycleSmoke:

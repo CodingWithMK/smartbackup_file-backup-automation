@@ -227,7 +227,7 @@ jobs:
           echo "$VERSION_OUT"
           echo "$VERSION_OUT" | grep -F "$EXPECTED_VERSION"
 
-          HELP_OUT="$("$BIN_PATH" --help)"
+          HELP_OUT="$(GITHUB_ACTIONS="" FORCE_COLOR="" PY_COLORS="" NO_COLOR="1" "$BIN_PATH" --help)"
           echo "$HELP_OUT" | grep -F -- "--dry-run"
           echo "$HELP_OUT" | grep -F -- "--select"
           echo "$HELP_OUT" | grep -F -- "--manifest-format"
