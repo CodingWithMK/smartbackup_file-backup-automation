@@ -3,6 +3,7 @@ Integration tests for primary CLI flags and commands (main, --list-drives,
 --exclude, --notify, --manifest-format, --show-manifest, --verify, schedule).
 """
 
+import builtins
 import json
 import sys
 from pathlib import Path
@@ -310,3 +311,130 @@ class TestSelectCLIFlag:
             assert "Selective (--select)" in show_res.output
             assert "Selective Backup History (--select)" in show_res.output
             assert "Projects" in show_res.output
+
+
+class TestQualityHardeningCLI:
+    """Integration tests for Q1 (--verify unreadable), Q2 (regex metacharacters), Q6 (manifest logging)."""
+
+    def test_cli_verify_exits_1_when_backup_file_unreadable_during_hashing(
+        self, tmp_path: Path
+    ) -> None:
+        src = tmp_path / "src"
+        tgt = tmp_path / "tgt"
+        src.mkdir()
+        tgt.mkdir()
+        (src / "secret.txt").write_text("integrity-checked")
+
+        # 1. Perform real hashed backup
+        res = runner.invoke(
+            app,
+            [
+                "--source",
+                str(src),
+                "--target",
+                str(tgt),
+                "--device-name",
+                "VerifyBox",
+                "--hash",
+            ],
+        )
+        assert res.exit_code == 0, res.output
+        backed_up = tgt / "Documents-Backup" / "VerifyBox" / "secret.txt"
+        assert backed_up.exists()
+
+        # 2. Control: readable --verify exits 0
+        ok_verify = runner.invoke(
+            app, ["--verify", "--target", str(tgt), "--device-name", "VerifyBox"]
+        )
+        assert ok_verify.exit_code == 0, ok_verify.output
+
+        # 3. Unreadable during hashing while stat() succeeds -> must exit 1!
+        real_open = builtins.open
+
+        def fail_backed_up(file, *args, **kwargs):
+            if Path(file) == backed_up:
+                raise PermissionError("simulated unreadable sector")
+            return real_open(file, *args, **kwargs)
+
+        with patch("builtins.open", side_effect=fail_backed_up):
+            bad_verify = runner.invoke(
+                app, ["--verify", "--target", str(tgt), "--device-name", "VerifyBox"]
+            )
+
+        assert bad_verify.exit_code == 1
+        assert "Error hashing" in bad_verify.output
+
+    def test_cli_exclude_with_regex_metacharacters_works_and_persists(
+        self, tmp_path: Path
+    ) -> None:
+        src = tmp_path / "src"
+        tgt = tmp_path / "tgt"
+        src.mkdir()
+        tgt.mkdir()
+        (src / "keep.txt").write_text("keep")
+        (src / "Backup (1) copy.zip").write_bytes(b"skip-me")
+        (src / "C++_notes.md").write_text("skip-cpp")
+        (src / "draft[1_old.txt").write_text("skip-unclosed")
+        (src / "img_3.png").write_bytes(b"skip-digit")
+
+        res = runner.invoke(
+            app,
+            [
+                "--source",
+                str(src),
+                "--target",
+                str(tgt),
+                "--device-name",
+                "MetaBox",
+                "--exclude",
+                "Backup (1)*",
+                "--exclude",
+                "C++*",
+                "--exclude",
+                "draft[1*",
+                "--exclude",
+                "img_[0-9]*.png",
+            ],
+        )
+        assert res.exit_code == 0, res.output
+        out_dir = tgt / "Documents-Backup" / "MetaBox"
+        assert (out_dir / "keep.txt").exists()
+        assert not (out_dir / "Backup (1) copy.zip").exists()
+        assert not (out_dir / "C++_notes.md").exists()
+        assert not (out_dir / "draft[1_old.txt").exists()
+        assert not (out_dir / "img_3.png").exists()
+
+        # Subsequent run using persisted metacharacter patterns also succeeds cleanly
+        res2 = runner.invoke(
+            app,
+            ["--source", str(src), "--target", str(tgt), "--device-name", "MetaBox"],
+        )
+        assert res2.exit_code == 0, res2.output
+
+    def test_cli_corrupt_manifest_warning_routed_via_logger_not_raw_stderr(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        src = tmp_path / "src"
+        tgt = tmp_path / "tgt"
+        src.mkdir()
+        (src / "doc.txt").write_text("hello")
+        dev_dir = tgt / "Documents-Backup" / "LogBox"
+        dev_dir.mkdir(parents=True)
+        (dev_dir / ".smartbackup_manifest.json").write_text("{corrupt", encoding="utf-8")
+
+        res = runner.invoke(
+            app,
+            [
+                "--source",
+                str(src),
+                "--target",
+                str(tgt),
+                "--device-name",
+                "LogBox",
+                "--quiet",
+            ],
+        )
+        assert res.exit_code == 0, res.output
+        assert capsys.readouterr().err == ""
+        assert "Failed to load manifest" in res.output
+        assert (dev_dir / "doc.txt").exists()

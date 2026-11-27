@@ -417,3 +417,53 @@ class TestSqliteManifestSmoke:
             )
         )
         assert (restored / "hello.txt").read_text() == "sqlite-backed"
+
+
+class TestQualityHardeningSmoke:
+    """Process-boundary smoke tests for Q2 (metacharacter exclusions) and Q3 (corrupt config recovery)."""
+
+    def test_exclude_metacharacters_in_subprocess(self, tmp_path: Path):
+        env = _sandbox_env(tmp_path)
+        src = tmp_path / "src"
+        tgt = tmp_path / "tgt"
+        src.mkdir()
+        tgt.mkdir()
+        (src / "normal.txt").write_text("keep")
+        (src / "Backup (1) draft.txt").write_text("skip-paren")
+        (src / "C++_spec.txt").write_text("skip-plus")
+
+        proc = _cli(
+            [
+                "--source",
+                str(src),
+                "--target",
+                str(tgt),
+                "--device-name",
+                DEVICE,
+                "--exclude",
+                "Backup (1)*",
+                "--exclude",
+                "C++*",
+            ],
+            env,
+        )
+        _assert_ok(proc)
+
+        backup_root = tgt / "Documents-Backup" / DEVICE
+        assert (backup_root / "normal.txt").exists()
+        assert not (backup_root / "Backup (1) draft.txt").exists()
+        assert not (backup_root / "C++_spec.txt").exists()
+
+    def test_corrupt_config_is_backed_up_before_overwrite_in_subprocess(self, tmp_path: Path):
+        env = _sandbox_env(tmp_path)
+        cfg_file = _config_file(tmp_path)
+        cfg_file.parent.mkdir(parents=True, exist_ok=True)
+        cfg_file.write_text("{corrupt-sandbox-config", encoding="utf-8")
+
+        proc = _cli(["config", "set", "manifest_format", "sqlite"], env)
+        _assert_ok(proc)
+
+        assert json.loads(cfg_file.read_text(encoding="utf-8"))["manifest_format"] == "sqlite"
+        corrupt_backups = list(cfg_file.parent.glob("config.json.corrupt.*"))
+        assert len(corrupt_backups) == 1
+        assert corrupt_backups[0].read_text(encoding="utf-8") == "{corrupt-sandbox-config"

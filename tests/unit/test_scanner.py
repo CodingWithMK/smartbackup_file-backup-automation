@@ -2,10 +2,15 @@
 Unit tests for the core.scanner module (ExclusionFilter & FileScanner).
 """
 
+import builtins
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from smartbackup.config import DEFAULT_EXCLUSIONS, EXCLUDED_EXTENSIONS
 from smartbackup.core.scanner import ExclusionFilter, FileScanner
+from smartbackup.models import FileInfo
 from smartbackup.ui.logger import BackupLogger
 
 
@@ -298,3 +303,153 @@ class TestScopedFileScanner:
         files = scanner.scan(tmp_path, include_folders=["Projects", "DoesNotExist"])
 
         assert set(files.keys()) == {Path("Projects/a.txt")}
+
+
+class TestExclusionFilterHardening:
+    """Q2 & Q8 regression tests for regex metacharacters, brackets, and case sensitivity."""
+
+    @pytest.mark.parametrize(
+        "pattern,matching_name,non_matching_name",
+        [
+            ("Backup (1)*", "Backup (1) copy.zip", "Backup 1 copy.zip"),
+            ("C++*", "C++_notes.md", "C_notes.md"),
+            ("cost$100*.csv", "cost$100_q1.csv", "cost100_q1.csv"),
+            ("a+b*.log", "a+b_debug.log", "aab_debug.log"),
+            ("a|b*.txt", "a|b_report.txt", "apple.txt"),
+            ("file{1,2}*.txt", "file{1,2}_out.txt", "file1_out.txt"),
+            ("^start*.tmp", "^start_01.tmp", "start_01.tmp"),
+            ("unclosed[bracket*", "unclosed[bracket_v1.txt", "unclosed_v1.txt"),
+            ("img_[0-9]*.png", "img_7_final.png", "img_a_final.png"),
+            ("file[!0-9]*.txt", "file_a.txt", "file5.txt"),
+            ("*.tar.gz", "archive.tar.gz", "archiveXtarYgz"),
+            ("temp?.txt", "temp1.txt", "temp12.txt"),
+        ],
+    )
+    def test_metacharacter_patterns_do_not_crash_and_match_literally(
+        self, pattern: str, matching_name: str, non_matching_name: str
+    ) -> None:
+        """Q2: glob patterns with regex metacharacters must never raise re.error or mis-match."""
+        filt = ExclusionFilter({pattern}, set())
+
+        assert filt.should_exclude(Path(f"/docs/{matching_name}"))[0] is True
+        assert filt.should_exclude(Path(f"/docs/{non_matching_name}"))[0] is False
+
+    def test_reversed_character_range_never_crashes(self) -> None:
+        """Q2 fragility guard: reversed character range '[z-a]*' must never raise re.error."""
+        filt = ExclusionFilter({"draft[z-a]*"}, set())
+        # Must not crash regardless of Python 3.9-3.13 fnmatch.translate behavior
+        assert isinstance(filt.should_exclude(Path("/docs/draft_x.txt"))[0], bool)
+
+    def test_re_error_during_compile_logs_warning_and_falls_back_to_literal_glob(self) -> None:
+        """Q2 fragility guard: if fnmatch.translate() yields an invalid regex, fall back safely."""
+        mock_logger = MagicMock()
+        real_compile = __import__("re").compile
+        call_count = 0
+
+        def fail_first_compile(pattern: str, flags: int = 0):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise __import__("re").error("bad character range z-a")
+            return real_compile(pattern, flags)
+
+        with patch("smartbackup.core.scanner.re.compile", side_effect=fail_first_compile):
+            filt = ExclusionFilter({"draft[z-a]*"}, set(), logger=mock_logger)
+
+        mock_logger.warning.assert_called_once()
+        assert "draft[z-a]*" in mock_logger.warning.call_args[0][0]
+        assert filt.should_exclude(Path("/docs/draft[z-a]_v1.txt"))[0] is True
+        assert filt.should_exclude(Path("/docs/draftb_v1.txt"))[0] is False
+
+    def test_exact_folder_name_with_brackets_matches_literally(self) -> None:
+        """Q2 fragility guard: bare brackets without */? stay literal exact matches."""
+        filt = ExclusionFilter({"Archive [2026]"}, set())
+
+        assert filt.should_exclude(Path("/docs/Archive [2026]"))[0] is True
+        assert filt.should_exclude(Path("/docs/Archive 2"))[0] is False
+
+    def test_case_insensitive_default_and_case_sensitive_opt_in(self) -> None:
+        """Q8: default preserves cross-platform case-insensitivity; opt-in enforces exact case."""
+        default_filt = ExclusionFilter({"build", "*.TMP"}, {".pyc"})
+        assert default_filt.should_exclude(Path("/repo/Build"))[0] is True
+        assert default_filt.should_exclude(Path("/repo/notes.tmp"))[0] is True
+        assert default_filt.should_exclude(Path("/repo/MOD.PYC"))[0] is True
+
+        cs_filt = ExclusionFilter({"build", "*.TMP"}, {".pyc"}, case_sensitive=True)
+        assert cs_filt.should_exclude(Path("/repo/build"))[0] is True
+        assert cs_filt.should_exclude(Path("/repo/Build"))[0] is False
+        assert cs_filt.should_exclude(Path("/repo/notes.TMP"))[0] is True
+        assert cs_filt.should_exclude(Path("/repo/notes.tmp"))[0] is False
+        assert cs_filt.should_exclude(Path("/repo/mod.pyc"))[0] is True
+        assert cs_filt.should_exclude(Path("/repo/MOD.PYC"))[0] is False
+
+
+class TestFileScannerHashErrors:
+    """Q1 regression tests for FileScanner._calculate_hash and hash_error propagation."""
+
+    def test_calculate_hash_returns_none_and_logs_warning_on_read_error(
+        self, tmp_path: Path
+    ) -> None:
+        target = tmp_path / "locked.txt"
+        target.write_text("data")
+        mock_logger = MagicMock()
+        scanner = FileScanner(ExclusionFilter(set(), set()), mock_logger, use_hash=True)
+
+        with patch("builtins.open", side_effect=PermissionError("denied")):
+            digest = scanner._calculate_hash(target)
+
+        assert digest is None
+        mock_logger.warning.assert_called_once()
+        assert "Could not hash" in mock_logger.warning.call_args[0][0]
+
+    def test_scan_sets_hash_error_only_when_hashing_attempted_and_failed(
+        self, tmp_path: Path
+    ) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        unreadable = src / "unreadable.txt"
+        unreadable.write_text("small")
+        big = src / "big.txt"
+        big.write_text("A" * 100)
+        ok_file = src / "ok.txt"
+        ok_file.write_text("good")
+
+        mock_logger = MagicMock()
+        scanner = FileScanner(
+            ExclusionFilter(set(), set()),
+            mock_logger,
+            use_hash=True,
+            max_size_for_hash=20,
+        )
+
+        real_open = builtins.open
+
+        def fail_unreadable(file, *args, **kwargs):
+            if Path(file) == unreadable:
+                raise OSError("bad sector")
+            return real_open(file, *args, **kwargs)
+
+        with patch("builtins.open", side_effect=fail_unreadable):
+            files = scanner.scan(src)
+
+        assert files[Path("unreadable.txt")].file_hash is None
+        assert files[Path("unreadable.txt")].hash_error is True
+
+        # Skipped due to threshold: file_hash is None but hash_error MUST be False
+        assert files[Path("big.txt")].file_hash is None
+        assert files[Path("big.txt")].hash_error is False
+
+        # Control: readable small file hashed cleanly
+        assert files[Path("ok.txt")].file_hash is not None
+        assert files[Path("ok.txt")].hash_error is False
+
+    def test_file_info_needs_update_respects_hash_error(self) -> None:
+        src = FileInfo(Path("/a"), Path("a"), size=10, mtime=100.0, file_hash=None, hash_error=True)
+        bak = FileInfo(Path("/b"), Path("a"), size=10, mtime=100.0, file_hash="a" * 64)
+
+        assert src.needs_update(bak, use_hash=True) is True
+        assert src.needs_update(bak, use_hash=False) is False
+
+        # Control: no hash_error and matching size/mtime -> False
+        clean = FileInfo(Path("/a"), Path("a"), size=10, mtime=100.0, file_hash=None, hash_error=False)
+        assert clean.needs_update(bak, use_hash=True) is False

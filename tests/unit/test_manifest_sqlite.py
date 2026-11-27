@@ -2,11 +2,14 @@
 Unit tests for SqliteManifestManager and the manifest factory / auto-detection.
 """
 
+import builtins
+import hashlib
 import os
 import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -19,6 +22,7 @@ from smartbackup.manifest import (
     detect_manifest_manager,
     get_manifest_manager,
     has_manifest,
+    resolve_device_target,
 )
 from smartbackup.models import FileInfo
 
@@ -295,3 +299,127 @@ class TestSqliteSelectiveManifest:
         assert loaded.last_backup_mode == "full"
         assert loaded.last_selected_folders == []
         assert loaded.selective_backups == []
+
+
+class TestSqliteHardeningAndDeviceResolution:
+    """Q1, Q6, and Q7 regression tests for SQLite manifest & resolve_device_target()."""
+
+    def test_verify_reports_error_when_file_unreadable_during_hashing(
+        self, tmp_path: Path
+    ) -> None:
+        bak = tmp_path / "bak"
+        bak.mkdir()
+        target = bak / "data.bin"
+        content = b"sqlite-verified-bytes"
+        target.write_bytes(content)
+
+        mgr = SqliteManifestManager(bak)
+        manifest = mgr.create(tmp_path / "src")
+        manifest.add_entry(
+            ManifestEntry(
+                relative_path="data.bin",
+                file_hash=hashlib.sha256(content).hexdigest(),
+                size=len(content),
+                mtime=1000.0,
+                permissions=0o644,
+                backed_up_at=1000.0,
+            )
+        )
+        assert mgr.save(manifest) is True
+        loaded = mgr.load()
+        assert loaded is not None
+
+        # Control: readable passes
+        assert mgr.verify(loaded, bak, verify_hashes=True) == []
+
+        real_open = builtins.open
+
+        def fail_open(file, *args, **kwargs):
+            if Path(file) == target:
+                raise PermissionError("locked file")
+            return real_open(file, *args, **kwargs)
+
+        with patch("builtins.open", side_effect=fail_open):
+            errors = mgr.verify(loaded, bak, verify_hashes=True)
+
+        assert len(errors) == 1
+        assert "Error hashing" in errors[0]
+
+    def test_corrupt_sqlite_manifest_logs_warning_via_injected_logger_not_stderr(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        mock_logger = MagicMock()
+        mgr = get_manifest_manager(tmp_path, "sqlite", logger=mock_logger)
+        mgr.manifest_path.write_bytes(b"corrupt sqlite header")
+
+        assert mgr.load() is None
+        assert capsys.readouterr().err == ""
+        mock_logger.warning.assert_called_once()
+        assert "Failed to load SQLite manifest" in mock_logger.warning.call_args[0][0]
+
+    def test_sqlite_manifest_save_failure_routes_warning_to_logger(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        mock_logger = MagicMock()
+        mgr = SqliteManifestManager(tmp_path, logger=mock_logger)
+        manifest = mgr.create(tmp_path / "src")
+
+        with patch("smartbackup.manifest.sqlite_manifest.sqlite3.connect", side_effect=sqlite3.OperationalError("readonly")):
+            ok = mgr.save(manifest)
+
+        assert ok is False
+        assert capsys.readouterr().err == ""
+        mock_logger.warning.assert_called_once()
+        assert "Failed to save SQLite manifest" in mock_logger.warning.call_args[0][0]
+
+    def test_resolve_device_target_explicit_and_whitespace(self, tmp_path: Path) -> None:
+        root = tmp_path / "Documents-Backup"
+        root.mkdir()
+        assert resolve_device_target(root, "My-PC") == root / "My-PC"
+        assert resolve_device_target(root, "  My-PC  ") == root / "My-PC"
+        # Whitespace-only falls back to auto-detection / root
+        with patch("smartbackup.platform.identity.get_device_name", return_value="AutoBox"):
+            assert resolve_device_target(root, "   ") == root
+
+    def test_resolve_device_target_legacy_json_and_sqlite_roots(self, tmp_path: Path) -> None:
+        json_root = tmp_path / "legacy_json"
+        json_root.mkdir()
+        jm = JsonManifestManager(json_root)
+        jm.save(jm.create(tmp_path))
+        (json_root / "AutoBox").mkdir()
+
+        with patch("smartbackup.platform.identity.get_device_name", return_value="AutoBox"):
+            assert resolve_device_target(json_root) == json_root
+
+        sql_root = tmp_path / "legacy_sql"
+        sql_root.mkdir()
+        sm = SqliteManifestManager(sql_root)
+        sm.save(sm.create(tmp_path))
+        (sql_root / "AutoBox").mkdir()
+
+        with patch("smartbackup.platform.identity.get_device_name", return_value="AutoBox"):
+            assert resolve_device_target(sql_root) == sql_root
+
+    def test_resolve_device_target_auto_detects_dir_and_ignores_file_collision(
+        self, tmp_path: Path
+    ) -> None:
+        root = tmp_path / "Documents-Backup"
+        root.mkdir()
+        (root / "AutoBox").mkdir()
+
+        with patch("smartbackup.platform.identity.get_device_name", return_value="AutoBox"):
+            assert resolve_device_target(root) == root / "AutoBox"
+
+        # Fragility guard: a regular file named after the hostname must NOT be treated as target dir
+        file_root = tmp_path / "file_collision"
+        file_root.mkdir()
+        (file_root / "AutoBox").write_text("regular file, not a dir")
+
+        with patch("smartbackup.platform.identity.get_device_name", return_value="AutoBox"):
+            assert resolve_device_target(file_root) == file_root
+
+    def test_resolve_device_target_missing_root_fallback(self, tmp_path: Path) -> None:
+        missing = tmp_path / "does_not_exist"
+        with patch("smartbackup.platform.identity.get_device_name", return_value="AutoBox"):
+            assert resolve_device_target(missing) == missing
+            assert resolve_device_target(missing, "ExplicitDev") == missing / "ExplicitDev"

@@ -145,3 +145,22 @@ class TestConfigExclusions:
 
         assert result.exit_code == 0
         assert "*.iso" in result.output
+
+
+class TestConfigCorruptRecoveryCLI:
+    """Q3 CLI integration: corrupt config.json warns and preserves backup before overwrite."""
+
+    def test_cli_config_set_preserves_corrupt_config_backup(self, isolated_config: Path):
+        isolated_config.mkdir(parents=True, exist_ok=True)
+        config_file = isolated_config / "config.json"
+        corrupt_text = "{invalid-json-from-manual-edit"
+        config_file.write_text(corrupt_text, encoding="utf-8")
+
+        result = _invoke("set", "manifest_format", "sqlite")
+
+        assert result.exit_code == 0, result.output
+        assert _stored(isolated_config)["manifest_format"] == "sqlite"
+
+        backups = list(isolated_config.glob("config.json.corrupt.*"))
+        assert len(backups) == 1
+        assert backups[0].read_text(encoding="utf-8") == corrupt_text

@@ -2,8 +2,12 @@
 Unit tests for manifest models and JsonManifestManager.
 """
 
+import builtins
 import hashlib
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from smartbackup.manifest.base import (
     Manifest,
@@ -568,8 +572,208 @@ class TestManifestHashingAndVerification:
 
         assert JsonManifestManager(tmp_path)._hash_file(test_file) == expected
 
-    def test_calculate_hash_returns_empty_on_error(self, tmp_path: Path) -> None:
-        assert JsonManifestManager(tmp_path)._hash_file(tmp_path / "nonexistent.txt") == ""
+    def test_calculate_hash_returns_none_on_error(self, tmp_path: Path) -> None:
+        assert JsonManifestManager(tmp_path)._hash_file(tmp_path / "nonexistent.txt") is None
+
+    def test_verify_reports_error_when_file_unreadable_during_hashing(
+        self, tmp_path: Path
+    ) -> None:
+        """Q1: stat() succeeds, open() raises PermissionError -> verify must report error."""
+        manager = JsonManifestManager(tmp_path)
+        target = tmp_path / "secret.bin"
+        content = b"top-secret"
+        target.write_bytes(content)
+
+        manifest = Manifest()
+        manifest.add_entry(
+            ManifestEntry(
+                relative_path="secret.bin",
+                file_hash=hashlib.sha256(content).hexdigest(),
+                size=len(content),
+                mtime=1000.0,
+                permissions=0o644,
+                backed_up_at=1000.0,
+            )
+        )
+
+        # Control: readable file passes verification
+        assert manager.verify(manifest, tmp_path, verify_hashes=True) == []
+
+        real_open = builtins.open
+
+        def fail_open(file, *args, **kwargs):
+            if Path(file) == target:
+                raise PermissionError("access denied")
+            return real_open(file, *args, **kwargs)
+
+        with patch("builtins.open", side_effect=fail_open):
+            errors = manager.verify(manifest, tmp_path, verify_hashes=True)
+
+        assert len(errors) == 1
+        assert "Error hashing" in errors[0]
+        assert "secret.bin" in errors[0]
+
+    def test_verify_reports_error_on_mid_stream_read_failure(self, tmp_path: Path) -> None:
+        """Q1 edge case: open() succeeds but read() fails mid-stream (bad USB sector)."""
+        manager = JsonManifestManager(tmp_path)
+        target = tmp_path / "sector.bin"
+        content = b"ABCD"
+        target.write_bytes(content)
+
+        manifest = Manifest()
+        manifest.add_entry(
+            ManifestEntry(
+                relative_path="sector.bin",
+                file_hash=hashlib.sha256(content).hexdigest(),
+                size=len(content),
+                mtime=1000.0,
+                permissions=0o644,
+                backed_up_at=1000.0,
+            )
+        )
+
+        class _BrokenReader:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self, _size: int = -1) -> bytes:
+                raise OSError("I/O error on bad sector")
+
+        with patch("builtins.open", return_value=_BrokenReader()):
+            errors = manager.verify(manifest, tmp_path, verify_hashes=True)
+
+        assert len(errors) == 1
+        assert "Error hashing" in errors[0]
+
+    def test_verify_reports_error_when_file_replaced_by_directory(
+        self, tmp_path: Path
+    ) -> None:
+        """Q1 edge case: target replaced by a directory with matching stat size -> IsADirectoryError."""
+        manager = JsonManifestManager(tmp_path)
+        dir_target = tmp_path / "corrupt_entry"
+        dir_target.mkdir()
+        dir_size = dir_target.stat().st_size
+
+        manifest = Manifest()
+        manifest.add_entry(
+            ManifestEntry(
+                relative_path="corrupt_entry",
+                file_hash="a" * 64,
+                size=dir_size,
+                mtime=1000.0,
+                permissions=0o644,
+                backed_up_at=1000.0,
+            )
+        )
+
+        errors = manager.verify(manifest, tmp_path, verify_hashes=True)
+        assert len(errors) == 1
+        assert "Error hashing" in errors[0]
+
+    def test_verify_empty_file_still_passes_with_sha256_of_empty_bytes(
+        self, tmp_path: Path
+    ) -> None:
+        """Q1 fragility guard: 0-byte file digest is valid and must not be confused with None."""
+        manager = JsonManifestManager(tmp_path)
+        empty = tmp_path / "empty.txt"
+        empty.write_bytes(b"")
+
+        manifest = Manifest()
+        manifest.add_entry(
+            ManifestEntry(
+                relative_path="empty.txt",
+                file_hash=hashlib.sha256(b"").hexdigest(),
+                size=0,
+                mtime=1000.0,
+                permissions=0o644,
+                backed_up_at=1000.0,
+            )
+        )
+
+        assert manager.verify(manifest, tmp_path, verify_hashes=True) == []
+
+    def test_has_changed_true_on_hash_error_even_with_matching_size_and_mtime(self) -> None:
+        """Q1: hash_error=True must never be silently treated as unchanged."""
+        entry = ManifestEntry(
+            relative_path="file.txt",
+            file_hash="a" * 64,
+            size=100,
+            mtime=1000.0,
+            permissions=0o644,
+            backed_up_at=1000.0,
+        )
+        failed_info = FileInfo(
+            path=Path("/file.txt"),
+            relative_path=Path("file.txt"),
+            size=100,
+            mtime=1000.0,
+            file_hash=None,
+            hash_error=True,
+        )
+        assert entry.has_changed(failed_info) is True
+
+        # Control: non-hash scan (hash_error=False, file_hash=None) keeps fast-path skip
+        non_hash_info = FileInfo(
+            path=Path("/file.txt"),
+            relative_path=Path("file.txt"),
+            size=100,
+            mtime=1000.0,
+            file_hash=None,
+            hash_error=False,
+        )
+        assert entry.has_changed(non_hash_info) is False
+
+    def test_corrupt_json_manifest_logs_warning_via_injected_logger_not_stderr(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Q6: injected logger receives warning with zero raw stderr output."""
+        mock_logger = MagicMock()
+        manager = JsonManifestManager(tmp_path, logger=mock_logger)
+        manager.manifest_path.write_text("{ broken json", encoding="utf-8")
+
+        assert manager.load() is None
+        captured = capsys.readouterr()
+        assert captured.err == ""
+        mock_logger.warning.assert_called_once()
+        assert "Failed to load manifest" in mock_logger.warning.call_args[0][0]
+
+    @pytest.mark.parametrize(
+        "raw_bytes",
+        [
+            b"[]",
+            b'"just a string"',
+            b"\xff\xfe\x00\x01",
+            b'{"version": 1, "format": "yaml", "files": {}}',
+            b'{"version": 1, "format": "json", "created": "not-an-iso-date", "files": {}}',
+        ],
+    )
+    def test_json_manifest_load_handles_non_dict_non_utf8_and_bad_schema(
+        self, tmp_path: Path, raw_bytes: bytes
+    ) -> None:
+        """Q6 fragility guard: corrupt schemas & binary garbage never raise uncaught exceptions."""
+        mock_logger = MagicMock()
+        manager = JsonManifestManager(tmp_path, logger=mock_logger)
+        manager.manifest_path.write_bytes(raw_bytes)
+
+        assert manager.load() is None
+        mock_logger.warning.assert_called_once()
+
+    def test_json_manifest_save_failure_routes_warning_to_logger(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        mock_logger = MagicMock()
+        manager = JsonManifestManager(tmp_path, logger=mock_logger)
+
+        with patch("builtins.open", side_effect=OSError("disk full")):
+            ok = manager.save(Manifest(source="/src"))
+
+        assert ok is False
+        assert capsys.readouterr().err == ""
+        mock_logger.warning.assert_called_once()
+        assert "Failed to save manifest" in mock_logger.warning.call_args[0][0]
 
     def test_verify_catches_hash_mismatch(self, tmp_path: Path) -> None:
         manager = JsonManifestManager(tmp_path)

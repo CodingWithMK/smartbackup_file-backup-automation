@@ -3,8 +3,10 @@ Unit tests for handlers module (desktop notification dispatch & escaping).
 """
 
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from smartbackup.backup import DEFAULT_MAX_RETRIES, SmartBackup
 from smartbackup.handlers import FallbackHandler, _escape_applescript, _escape_powershell
 from smartbackup.models import BackupResult
 from smartbackup.ui.logger import BackupLogger
@@ -105,3 +107,136 @@ class TestDesktopNotifications:
             ),
         ):
             assert handler._send_desktop_notification("Title", "Body") is False
+
+
+class TestFallbackHandlerNoDevice:
+    """Q5 regression tests for EOFError, KeyboardInterrupt, and SmartBackup retry loop."""
+
+    def test_handle_no_device_catches_eof_on_prompt_ask(self, tmp_path: Path) -> None:
+        mock_logger = MagicMock()
+        handler = FallbackHandler(mock_logger)
+
+        with patch("smartbackup.handlers.Prompt.ask", side_effect=EOFError):
+            result = handler.handle_no_device(tmp_path)
+
+        assert result is None
+        assert handler.last_cancelled is True
+        mock_logger.info.assert_called_once()
+        assert "non-interactive" in mock_logger.info.call_args[0][0].lower()
+
+    def test_handle_no_device_catches_eof_on_retry_input(self, tmp_path: Path) -> None:
+        mock_logger = MagicMock()
+        handler = FallbackHandler(mock_logger)
+
+        with (
+            patch("smartbackup.handlers.Prompt.ask", return_value="2"),
+            patch("builtins.input", side_effect=EOFError),
+        ):
+            result = handler.handle_no_device(tmp_path)
+
+        assert result is None
+        assert handler.last_cancelled is True
+        assert "non-interactive" in mock_logger.info.call_args[0][0].lower()
+
+    def test_handle_no_device_catches_keyboard_interrupt(self, tmp_path: Path) -> None:
+        mock_logger = MagicMock()
+        handler = FallbackHandler(mock_logger)
+
+        with patch("smartbackup.handlers.Prompt.ask", side_effect=KeyboardInterrupt):
+            result = handler.handle_no_device(tmp_path)
+
+        assert result is None
+        assert handler.last_cancelled is True
+        assert "cancelled by user" in mock_logger.info.call_args[0][0].lower()
+
+    def test_handle_no_device_cancel_sets_last_cancelled_true(self, tmp_path: Path) -> None:
+        handler = FallbackHandler(MagicMock())
+
+        with patch("smartbackup.handlers.Prompt.ask", return_value="3"):
+            result = handler.handle_no_device(tmp_path)
+
+        assert result is None
+        assert handler.last_cancelled is True
+
+    def test_handle_no_device_retry_sets_last_cancelled_false(self, tmp_path: Path) -> None:
+        handler = FallbackHandler(MagicMock())
+
+        with (
+            patch("smartbackup.handlers.Prompt.ask", return_value="2"),
+            patch("builtins.input", return_value=""),
+        ):
+            result = handler.handle_no_device(tmp_path)
+
+        assert result is None
+        assert handler.last_cancelled is False
+
+    def test_handle_no_device_local_backup_and_oserror(self, tmp_path: Path) -> None:
+        handler = FallbackHandler(MagicMock())
+
+        with (
+            patch("smartbackup.handlers.Path.home", return_value=tmp_path),
+            patch("smartbackup.handlers.Prompt.ask", return_value="1"),
+        ):
+            result = handler.handle_no_device(tmp_path)
+
+        assert result == tmp_path / ".local_backup_temp"
+        assert result.is_dir()
+        assert handler.last_cancelled is False
+
+        # Unwritable home dir should fail gracefully and mark cancelled
+        mock_logger = MagicMock()
+        handler2 = FallbackHandler(mock_logger)
+        with (
+            patch("smartbackup.handlers.Path.home", return_value=tmp_path),
+            patch("smartbackup.handlers.Prompt.ask", return_value="1"),
+            patch("pathlib.Path.mkdir", side_effect=OSError("read-only home")),
+        ):
+            result2 = handler2.handle_no_device(tmp_path)
+
+        assert result2 is None
+        assert handler2.last_cancelled is True
+        mock_logger.error.assert_called_once()
+
+    def test_smartbackup_run_stops_retrying_immediately_on_eof_or_cancel(
+        self, tmp_path: Path
+    ) -> None:
+        """Q5 fragility guard: SmartBackup.run() must NOT loop 3x on cancel or EOF."""
+        src = tmp_path / "src"
+        src.mkdir()
+
+        for side_effect in (EOFError, KeyboardInterrupt):
+            sb = SmartBackup()
+            sb.logger = BackupLogger(verbose=False)
+            sb.fallback.logger = sb.logger
+
+            with (
+                patch("smartbackup.backup.DeviceDetector.find_backup_device", return_value=None),
+                patch("smartbackup.handlers.Prompt.ask", side_effect=side_effect) as mock_ask,
+            ):
+                ok = sb.run(custom_source=src)
+
+            assert ok is False
+            assert mock_ask.call_count == 1
+
+        # Explicit cancel choice "3" also exits on attempt 1
+        sb_cancel = SmartBackup()
+        sb_cancel.logger = BackupLogger(verbose=False)
+        sb_cancel.fallback.logger = sb_cancel.logger
+        with (
+            patch("smartbackup.backup.DeviceDetector.find_backup_device", return_value=None),
+            patch("smartbackup.handlers.Prompt.ask", return_value="3") as mock_ask,
+        ):
+            assert sb_cancel.run(custom_source=src) is False
+        assert mock_ask.call_count == 1
+
+        # Control: explicit retry choice "2" retries DEFAULT_MAX_RETRIES times
+        sb_retry = SmartBackup()
+        sb_retry.logger = BackupLogger(verbose=False)
+        sb_retry.fallback.logger = sb_retry.logger
+        with (
+            patch("smartbackup.backup.DeviceDetector.find_backup_device", return_value=None),
+            patch("smartbackup.handlers.Prompt.ask", return_value="2") as mock_ask,
+            patch("builtins.input", return_value=""),
+        ):
+            assert sb_retry.run(custom_source=src) is False
+        assert mock_ask.call_count == DEFAULT_MAX_RETRIES
