@@ -7,7 +7,6 @@ monolithic JSON document becomes slow or memory-heavy.
 
 import json
 import sqlite3
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -172,8 +171,8 @@ class SqliteManifestManager(ManifestManager):
                     )
 
             return manifest
-        except (sqlite3.Error, OSError, ValueError) as e:
-            print(f"Warning: Failed to load SQLite manifest: {e}", file=sys.stderr)
+        except (sqlite3.Error, OSError, ValueError, TypeError) as e:
+            self._warn(f"Failed to load SQLite manifest: {e}")
             return None
         finally:
             if conn is not None:
@@ -287,5 +286,5 @@ class SqliteManifestManager(ManifestManager):
                 temp_path.unlink(missing_ok=True)
             except Exception:
                 pass
-            print(f"Warning: Failed to save SQLite manifest: {e}", file=sys.stderr)
+            self._warn(f"Failed to save SQLite manifest: {e}")
             return False

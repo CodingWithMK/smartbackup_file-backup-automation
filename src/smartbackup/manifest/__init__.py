@@ -19,6 +19,7 @@ from smartbackup.manifest.factory import (
     detect_manifest_manager,
     get_manifest_manager,
     has_manifest,
+    resolve_device_target,
 )
 from smartbackup.manifest.json_manifest import JsonManifestManager
 from smartbackup.manifest.sqlite_manifest import SqliteManifestManager
@@ -36,4 +37,5 @@ __all__ = [
     "get_manifest_manager",
     "detect_manifest_manager",
     "has_manifest",
+    "resolve_device_target",
 ]

@@ -25,6 +25,7 @@ from smartbackup.manifest.factory import (
     SUPPORTED_MANIFEST_FORMATS,
     get_manifest_manager,
     has_manifest,
+    resolve_device_target,
 )
 from smartbackup.models import SelectionMetadata
 from smartbackup.platform.identity import get_device_name, sanitize_device_name
@@ -76,27 +77,8 @@ app.add_typer(config_app, name="config")
 
 
 def _resolve_device_target(root: Path, device: Optional[str] = None) -> Path:
-    """Resolve the backup target directory, accounting for device subfolders.
-
-    If a device name is given, use that subfolder. Otherwise, check for a
-    legacy flat layout (manifest at root) or fall back to the auto-detected
-    device name.
-    """
-    if device:
-        return root / device
-
-    # Legacy layout: manifest lives directly in root
-    if has_manifest(root):
-        return root
-
-    # New layout: use auto-detected device name
-    device_name = get_device_name()
-    candidate = root / device_name
-    if candidate.exists():
-        return candidate
-
-    # If nothing matches, fall back to root (will likely show "not found")
-    return root
+    """Resolve the backup target directory, accounting for device subfolders."""
+    return resolve_device_target(root, device)
 
 
 def _version_callback(value: bool) -> None:
@@ -127,7 +109,7 @@ def _list_devices(backup_path: Path, backup_folder: str = "Documents-Backup") ->
     for item in sorted(root.iterdir()):
         if item.is_dir() and not item.name.startswith(("_", ".")):
             if has_manifest(item):
-                manager = get_manifest_manager(item)
+                manager = get_manifest_manager(item, logger=logger)
                 manifest = manager.load()
                 if manifest:
                     table.add_row(
@@ -187,7 +169,7 @@ def _show_manifest(
     # Determine target: device subfolder or legacy layout
     target = _resolve_device_target(root, device)
 
-    manager = get_manifest_manager(target)
+    manager = get_manifest_manager(target, logger=logger)
     if not manager.exists():
         logger.warning("No manifest found in backup directory")
         return
@@ -283,7 +265,7 @@ def _verify_manifest(
 
     target = _resolve_device_target(root, device)
 
-    manager = get_manifest_manager(target)
+    manager = get_manifest_manager(target, logger=logger)
     manifest = manager.load()
     if manifest is None:
         logger.error("No manifest found or failed to load")
@@ -958,7 +940,7 @@ def backup_cmd(
         logger.info("SHA-256 hashing enabled for files up to 50MB (--hash)")
 
     # Load config and add exclusions
-    config_manager = ConfigManager()
+    config_manager = ConfigManager(logger=logger)
     if exclude:
         for pat in exclude:
             config_manager.add_exclusion(pat)
@@ -1008,10 +990,9 @@ def backup_cmd(
         if target is not None:
             try:
                 backup_root = target / "Documents-Backup"
-                resolved_dev = device_name or get_device_name()
-                candidate_dir = backup_root / resolved_dev
-                if candidate_dir.exists():
-                    existing_mgr = get_manifest_manager(candidate_dir)
+                candidate_dir = _resolve_device_target(backup_root, device_name)
+                if candidate_dir.is_dir():
+                    existing_mgr = get_manifest_manager(candidate_dir, logger=logger)
                     existing_manifest = existing_mgr.load() if existing_mgr.exists() else None
                     if existing_manifest is not None:
                         for rel_path in existing_manifest.entries:
@@ -1023,7 +1004,9 @@ def backup_cmd(
 
         selector = FolderSelector(
             source_path=resolved_source,
-            exclusion_filter=ExclusionFilter(merged_exclusions, EXCLUDED_EXTENSIONS),
+            exclusion_filter=ExclusionFilter(
+                merged_exclusions, EXCLUDED_EXTENSIONS, logger=logger
+            ),
             console=console,
             previously_backed_up=previously_backed_up,
         )
@@ -1045,6 +1028,7 @@ def backup_cmd(
 
         backup = SmartBackup()
         backup.logger = logger
+        backup.fallback.logger = logger
 
         if no_manifest:
             logger.info("Manifest tracking disabled")

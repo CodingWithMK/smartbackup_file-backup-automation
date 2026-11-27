@@ -3,15 +3,19 @@ Manifest Base - Base classes for manifest tracking.
 """
 
 import hashlib
+import sys
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from smartbackup.models import FileInfo
+
+if TYPE_CHECKING:
+    from smartbackup.ui.logger import BackupLogger
 
 
 class ManifestFormat(Enum):
@@ -93,6 +97,10 @@ class ManifestEntry:
 
         # Mtime changed = likely changed
         if file_info.mtime != self.mtime:
+            return True
+
+        # Hashing was requested but failed -> cannot verify unchanged
+        if file_info.hash_error:
             return True
 
         # If both have hashes, compare them
@@ -329,14 +337,23 @@ class ManifestManager(ABC):
     MANIFEST_FILENAME = ".smartbackup_manifest"
     FORMAT: ManifestFormat = ManifestFormat.JSON
 
-    def __init__(self, backup_path: Path):
+    def __init__(self, backup_path: Path, logger: Optional["BackupLogger"] = None):
         """
         Initialize manifest manager.
 
         Args:
             backup_path: Path to the backup directory
+            logger: Optional BackupLogger for routing warnings instead of raw stderr
         """
         self.backup_path = backup_path
+        self.logger = logger
+
+    def _warn(self, message: str) -> None:
+        """Emit a warning through the injected logger, or stderr as fallback."""
+        if self.logger is not None:
+            self.logger.warning(message)
+        else:
+            print(f"Warning: {message}", file=sys.stderr)
 
     @property
     @abstractmethod
@@ -505,16 +522,19 @@ class ManifestManager(ABC):
         return manifest
 
     @staticmethod
-    def _hash_file(path: Path, chunk_size: int = 65536) -> str:
-        """Calculate SHA-256 hash of a file for verification."""
+    def _hash_file(path: Path, chunk_size: int = 65536) -> Optional[str]:
+        """Calculate SHA-256 hash of a file for verification.
+
+        Returns ``None`` if the file cannot be read.
+        """
         hasher = hashlib.sha256()
         try:
             with open(path, "rb") as f:
                 for chunk in iter(lambda: f.read(chunk_size), b""):
                     hasher.update(chunk)
             return hasher.hexdigest()
-        except Exception:
-            return ""
+        except OSError:
+            return None
 
     def verify(
         self, manifest: Manifest, backup_target: Path, verify_hashes: bool = False
@@ -549,7 +569,11 @@ class ManifestManager(ABC):
                     )
                 elif verify_hashes and entry.file_hash:
                     actual_hash = self._hash_file(file_path)
-                    if actual_hash and actual_hash != entry.file_hash:
+                    if actual_hash is None:
+                        errors.append(
+                            f"Error hashing {entry.relative_path}: unable to read file"
+                        )
+                    elif actual_hash != entry.file_hash:
                         errors.append(
                             f"Hash mismatch: {entry.relative_path} "
                             f"(expected {entry.file_hash[:16]}..., "

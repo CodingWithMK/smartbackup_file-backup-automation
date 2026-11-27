@@ -41,13 +41,22 @@ class JsonManifestManager(ManifestManager):
         try:
             with open(self.manifest_path, encoding="utf-8") as f:
                 data = json.load(f)
+            if not isinstance(data, dict):
+                raise ValueError(
+                    f"Manifest root must be a JSON object, got {type(data).__name__}"
+                )
             return Manifest.from_dict(data)
-        except (json.JSONDecodeError, OSError) as e:
+        except (
+            json.JSONDecodeError,
+            UnicodeDecodeError,
+            OSError,
+            ValueError,
+            TypeError,
+            AttributeError,
+        ) as e:
             # Log error but don't crash - treat as no manifest
             # This allows recovery from corrupted manifests
-            import sys
-
-            print(f"Warning: Failed to load manifest: {e}", file=sys.stderr)
+            self._warn(f"Failed to load manifest: {e}")
             return None
 
     def save(self, manifest: Manifest) -> bool:
@@ -83,7 +92,5 @@ class JsonManifestManager(ManifestManager):
                 temp_path.unlink(missing_ok=True)
             except Exception:
                 pass
-            import sys
-
-            print(f"Warning: Failed to save manifest: {e}", file=sys.stderr)
+            self._warn(f"Failed to save manifest: {e}")
             return False
