@@ -2,6 +2,7 @@
 Scanner - File scanning and exclusion filtering.
 """
 
+import fnmatch
 import hashlib
 import os
 import re
@@ -12,28 +13,70 @@ from smartbackup.models import FileInfo
 from smartbackup.ui.logger import BackupLogger
 
 
+def _compile_literal_glob(pattern: str, flags: int) -> re.Pattern[str]:
+    """Compile a glob pattern treating ``*`` and ``?`` as wildcards and all other chars literally.
+
+    Used as a crash-proof fallback when ``fnmatch.translate()`` produces an invalid
+    regex character range (for example ``report[z-a]*``).
+    """
+    parts: list[str] = []
+    for ch in pattern:
+        if ch == "*":
+            parts.append(".*")
+        elif ch == "?":
+            parts.append(".")
+        else:
+            parts.append(re.escape(ch))
+    return re.compile(rf"(?s:{''.join(parts)})\Z", flags)
+
+
 class ExclusionFilter:
     """
     Filters files and folders based on exclusion rules.
 
+    Matching is case-insensitive by default for cross-platform developer
+    convenience (Windows, macOS, and Linux). Pass ``case_sensitive=True`` to
+    enforce case-sensitive matching on case-sensitive filesystems.
+
     Supports:
-    - Exact names
-    - Wildcards (*.ext)
-    - Regex patterns (optional)
+    - Exact names (matched literally, even when containing brackets like ``Archive [2026]``)
+    - File extensions
+    - Glob wildcards (``*``, ``?``, and valid ``[...]`` character classes via ``fnmatch``)
+    - Automatic Python virtual environment detection
     """
 
-    def __init__(self, exclusions: set[str], excluded_extensions: set[str]):
+    def __init__(
+        self,
+        exclusions: set[str],
+        excluded_extensions: set[str],
+        case_sensitive: bool = False,
+        logger: Optional[BackupLogger] = None,
+    ):
+        self.case_sensitive = case_sensitive
+        self.logger = logger
         self.exact_matches: set[str] = set()
         self.patterns: list[re.Pattern[str]] = []
-        self.excluded_extensions = {ext.lower() for ext in excluded_extensions}
+        self.excluded_extensions = (
+            set(excluded_extensions)
+            if case_sensitive
+            else {ext.lower() for ext in excluded_extensions}
+        )
+
+        flags = 0 if case_sensitive else re.IGNORECASE
 
         for excl in exclusions:
             if "*" in excl or "?" in excl:
-                # Convert glob pattern to regex
-                regex = excl.replace(".", r"\.").replace("*", ".*").replace("?", ".")
-                self.patterns.append(re.compile(f"^{regex}$", re.IGNORECASE))
+                try:
+                    self.patterns.append(re.compile(fnmatch.translate(excl), flags))
+                except re.error as e:
+                    if self.logger is not None:
+                        self.logger.warning(
+                            f"Exclusion pattern '{excl}' has invalid character class ({e}); "
+                            "treating brackets literally."
+                        )
+                    self.patterns.append(_compile_literal_glob(excl, flags))
             else:
-                self.exact_matches.add(excl.lower())
+                self.exact_matches.add(excl if case_sensitive else excl.lower())
 
     def should_exclude(self, path: Path) -> tuple[bool, str]:
         """
@@ -42,19 +85,21 @@ class ExclusionFilter:
         Returns:
             Tuple (should_be_excluded, reason)
         """
-        name = path.name.lower()
+        raw_name = path.name
+        name = raw_name if self.case_sensitive else raw_name.lower()
 
         # Exact match
         if name in self.exact_matches:
             return True, f"Exact match: {name}"
 
         # Check file extension
-        if path.suffix.lower() in self.excluded_extensions:
+        suffix = path.suffix if self.case_sensitive else path.suffix.lower()
+        if suffix in self.excluded_extensions:
             return True, f"Excluded extension: {path.suffix}"
 
         # Pattern match
         for pattern in self.patterns:
-            if pattern.match(name):
+            if pattern.match(raw_name):
                 return True, f"Pattern match: {pattern.pattern}"
 
         # Special check for virtual environments
@@ -78,7 +123,7 @@ class ExclusionFilter:
             path / "lib" / "python3",  # Standard venv structure
         ]
 
-        return any(indicator.exists() for indicator in venv_indicators[:6])
+        return any(indicator.exists() for indicator in venv_indicators)
 
 
 class FileScanner:
@@ -199,10 +244,13 @@ class FileScanner:
                             relative_path = path.relative_to(base_path)
 
                             # Optional: Calculate hash
-                            file_hash = None
+                            file_hash: Optional[str] = None
+                            hash_error = False
                             if self.use_hash:
                                 if self.hash_all or stat.st_size <= self.max_size_for_hash:
                                     file_hash = self._calculate_hash(path)
+                                    if file_hash is None:
+                                        hash_error = True
 
                             files[relative_path] = FileInfo(
                                 path=path,
@@ -210,6 +258,7 @@ class FileScanner:
                                 size=stat.st_size,
                                 mtime=stat.st_mtime,
                                 file_hash=file_hash,
+                                hash_error=hash_error,
                             )
 
                     except PermissionError:
@@ -220,13 +269,17 @@ class FileScanner:
         except PermissionError:
             self.logger.warning(f"Permission denied for: {current_path}")
 
-    def _calculate_hash(self, path: Path, chunk_size: int = 65536) -> str:
-        """Calculate SHA-256 hash of a file for integrity verification."""
+    def _calculate_hash(self, path: Path, chunk_size: int = 65536) -> Optional[str]:
+        """Calculate SHA-256 hash of a file for integrity verification.
+
+        Returns ``None`` and logs a warning if the file cannot be read.
+        """
         hasher = hashlib.sha256()
         try:
             with open(path, "rb") as f:
                 for chunk in iter(lambda: f.read(chunk_size), b""):
                     hasher.update(chunk)
             return hasher.hexdigest()
-        except Exception:
-            return ""
+        except OSError as e:
+            self.logger.warning(f"Could not hash {path}: {e}")
+            return None

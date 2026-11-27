@@ -28,12 +28,15 @@ class FileInfo:
     size: int
     mtime: float
     file_hash: Optional[str] = None
+    hash_error: bool = False
 
     def needs_update(self, other: "FileInfo", use_hash: bool = False) -> bool:
         """Checks if the file needs to be updated."""
         if self.size != other.size:
             return True
         if self.mtime != other.mtime:
+            return True
+        if use_hash and self.hash_error:
             return True
         if use_hash and self.file_hash and other.file_hash:
             return self.file_hash != other.file_hash
