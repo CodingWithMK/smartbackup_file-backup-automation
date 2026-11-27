@@ -42,14 +42,20 @@ class FallbackHandler:
 
     def __init__(self, logger: BackupLogger):
         self.logger = logger
+        self.last_cancelled: bool = False
 
     def handle_no_device(self, source_path: Path) -> Optional[Path]:
         """
         Handles the case when no external medium is available.
 
+        Sets ``self.last_cancelled = True`` when the user cancels, sends
+        ``Ctrl+C``, or stdin hits ``EOF`` so callers do not keep re-prompting
+        in a retry loop.
+
         Returns:
             Alternative backup path or None
         """
+        self.last_cancelled = False
         warning_msg = (
             "[bold]EXTERNAL STORAGE MEDIUM NOT FOUND[/bold]\n\n"
             "Please make sure that:\n"
@@ -76,7 +82,12 @@ class FallbackHandler:
             choice = Prompt.ask("\n[cyan]Your choice[/cyan]", choices=["1", "2", "3"], default="3")
 
             if choice == "1":
-                local_backup.mkdir(parents=True, exist_ok=True)
+                try:
+                    local_backup.mkdir(parents=True, exist_ok=True)
+                except OSError as e:
+                    self.last_cancelled = True
+                    self.logger.error(f"Could not create local backup directory {local_backup}: {e}")
+                    return None
                 self.logger.info(f"Local backup directory created: {local_backup}")
                 return local_backup
 
@@ -86,12 +97,19 @@ class FallbackHandler:
                 return None  # Will retry
 
             else:
+                self.last_cancelled = True
                 self.logger.info("Backup cancelled.")
                 return None
 
         except KeyboardInterrupt:
+            self.last_cancelled = True
             console.print()
             self.logger.info("Backup cancelled by user.")
+            return None
+        except EOFError:
+            self.last_cancelled = True
+            console.print()
+            self.logger.info("Backup cancelled (non-interactive input).")
             return None
 
     def notify_completion(

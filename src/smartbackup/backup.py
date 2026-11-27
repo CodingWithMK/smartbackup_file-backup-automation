@@ -22,6 +22,8 @@ from smartbackup.platform.resolver import PathResolver
 from smartbackup.platform.runtime import ensure_utf8_console
 from smartbackup.ui.logger import BackupLogger
 
+DEFAULT_MAX_RETRIES = 3
+
 
 class SmartBackup:
     """Main class that brings all components together."""
@@ -87,8 +89,7 @@ class SmartBackup:
         backup_path = custom_target
         device_detector = DeviceDetector(self.logger)
 
-        max_retries = 3
-        for attempt in range(max_retries):
+        for attempt in range(DEFAULT_MAX_RETRIES):
             if backup_path is None:
                 backup_path = device_detector.find_backup_device(
                     required_space=1024 * 1024 * 100,  # 100 MB minimum
@@ -97,8 +98,12 @@ class SmartBackup:
 
             if backup_path is None:
                 backup_path = self.fallback.handle_no_device(source_path)
-                if backup_path is None and attempt < max_retries - 1:
-                    continue  # Retry
+                if (
+                    backup_path is None
+                    and not self.fallback.last_cancelled
+                    and attempt < DEFAULT_MAX_RETRIES - 1
+                ):
+                    continue  # Retry only when user explicitly chose to wait
 
             break
 
