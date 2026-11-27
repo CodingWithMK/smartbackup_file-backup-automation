@@ -80,7 +80,9 @@ class BackupEngine:
 
             # 2. Initialize components
             exclusion_filter = ExclusionFilter(
-                self.config.exclusions, self.config.excluded_extensions
+                self.config.exclusions,
+                self.config.excluded_extensions,
+                logger=self.logger,
             )
 
             scanner = FileScanner(
@@ -97,7 +99,9 @@ class BackupEngine:
                 # Migrate legacy layout if needed. Never during dry-run: a
                 # simulation must not reorganize files on the backup medium.
                 if not self.is_dry_run:
-                    self._migrate_legacy_layout(backup_root)
+                    if not self._migrate_legacy_layout(backup_root):
+                        self.result.errors += 1
+                        return self.result
                 backup_target = backup_root / self.config.device_name
             else:
                 backup_target = backup_root
@@ -109,14 +113,16 @@ class BackupEngine:
             self._migrated_from_manifest_path = None
             if self.config.use_manifest:
                 self._manifest_manager = get_manifest_manager(
-                    backup_target, self.config.manifest_format
+                    backup_target, self.config.manifest_format, logger=self.logger
                 )
                 if self._manifest_manager.exists():
                     self._manifest = self._manifest_manager.load_or_create(
                         self.config.source_path
                     )
                 else:
-                    existing_other = detect_manifest_manager(backup_target)
+                    existing_other = detect_manifest_manager(
+                        backup_target, logger=self.logger
+                    )
                     loaded_other = existing_other.load() if existing_other else None
                     if existing_other and loaded_other is not None:
                         self._manifest = loaded_other
@@ -353,36 +359,51 @@ class BackupEngine:
                         return True
         return False
 
-    def _migrate_legacy_layout(self, backup_root: Path) -> None:
+    def _migrate_legacy_layout(self, backup_root: Path) -> bool:
         """Migrate legacy flat layout to per-device subfolder structure.
 
         If Documents-Backup/ contains files directly (legacy layout), move them
         into a device-named subfolder so multiple devices can coexist.
+
+        Returns:
+            True if migration succeeded or was not needed; False if migration
+            failed unrecoverably (after attempting best-effort rollback).
         """
         if not backup_root.exists():
-            return  # Fresh backup, no migration needed
+            return True  # Fresh backup, no migration needed
 
         # Check for legacy indicators at the root level
         legacy_logs = backup_root / "_backup_logs"
         has_root_files = any(item.is_file() for item in backup_root.iterdir())
 
         if not (has_manifest(backup_root) or legacy_logs.exists() or has_root_files):
-            return  # Already using new layout or empty
+            return True  # Already using new layout or empty
 
         device_name = self.config.device_name
         device_folder = backup_root / device_name
 
         # If device folder already exists, skip migration
         if device_folder.exists():
-            return
+            return True
 
         self.logger.info("Detected legacy backup layout. Migrating to per-device structure...")
         self.logger.info(f"Moving existing backup into: {device_name}/")
 
-        # Create a temporary directory for the move
-        temp_name = f".migration_temp_{int(time.time())}"
+        # Create a collision-safe temporary directory for the move
+        base_temp_name = f".migration_temp_{int(time.time())}"
+        temp_name = base_temp_name
         temp_dir = backup_root / temp_name
-        temp_dir.mkdir()
+        counter = 1
+        while temp_dir.exists():
+            temp_name = f"{base_temp_name}_{counter}"
+            temp_dir = backup_root / temp_name
+            counter += 1
+
+        try:
+            temp_dir.mkdir()
+        except OSError as e:
+            self.logger.error(f"Failed to create temporary migration directory {temp_dir}: {e}")
+            return False
 
         # Move all items (except the temp dir itself) into the temp dir
         for item in backup_root.iterdir():
@@ -399,11 +420,34 @@ class BackupEngine:
             temp_dir.rename(device_folder)
         except OSError as e:
             self.logger.error(f"Failed to finalize migration to {device_name}: {e}")
-            # Try to roll back some files from temp_dir if possible,
-            # but usually this is a fatal collision or permission issue.
-            return
+            for item in list(temp_dir.iterdir()):
+                dest = backup_root / item.name
+                if dest.exists():
+                    self.logger.warning(
+                        f"Cannot roll back {item.name}: destination already exists at {dest}"
+                    )
+                    continue
+                try:
+                    item.rename(dest)
+                except OSError as rb_err:
+                    self.logger.warning(f"Could not roll back {item.name}: {rb_err}")
+
+            try:
+                if not any(temp_dir.iterdir()):
+                    temp_dir.rmdir()
+                    self.logger.info("Migration rolled back cleanly to original legacy layout.")
+                else:
+                    self.logger.error(
+                        f"Partial rollback: remaining files are preserved in {temp_dir}"
+                    )
+            except OSError as rmdir_err:
+                self.logger.error(
+                    f"Could not clean up temporary migration directory {temp_dir}: {rmdir_err}"
+                )
+            return False
 
         self.logger.success("Migration complete!")
+        return True
 
     def _validate_paths(self) -> bool:
         """Validates source and target paths."""
