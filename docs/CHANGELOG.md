@@ -36,6 +36,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Global zero-write `--dry-run` isolation**:
   - Neither full `--dry-run` nor `--select --dry-run` creates target directories or writes
     `.log` files on the backup medium, ensuring complete zero-write dry-run simulation.
+- **Shared device-target resolution (`Q7`)**:
+  - Extracted `resolve_device_target()` in `smartbackup.manifest.factory` (checking
+    `candidate.is_dir()` to avoid regular-file name collisions) and reused it across
+    `cli.py` and `RestoreEngine`.
+- **Optional case-sensitive `ExclusionFilter` mode (`Q8`)**:
+  - Added opt-in `case_sensitive: bool = False` parameter to `ExclusionFilter` while
+    preserving the cross-platform case-insensitive default across Windows, macOS, and Linux.
+
+### Fixed
+- **Eliminated silent hash failures during `--verify` and `--hash` (`Q1`)**:
+  - `ManifestManager._hash_file()` and `FileScanner._calculate_hash()` now return `None`
+    on read/`OSError` failures (with warning logged in `FileScanner`) instead of `""`.
+  - `ManifestManager.verify(..., verify_hashes=True)` now reports an explicit hashing
+    error and exits `1` when a file's metadata is readable (`stat()`) but its body cannot
+    be read during hashing.
+  - Added `FileInfo.hash_error` so unreadable files scanned under `--hash` are never
+    silently skipped as unchanged, while non-hash runs continue fast-path size+mtime checks.
+- **Crash-proof exclusion glob matching (`Q2`)**:
+  - Replaced naive `.replace()` glob-to-regex conversion in `ExclusionFilter` with
+    `fnmatch.translate()` plus a literal-glob fallback on `re.error`, fixing crashes and
+    mis-matches on patterns containing regex metacharacters (`Backup (1)*`, `C++*`, `$`, `|`, `{}`).
+- **Corrupt `config.json` protection and atomic saves (`Q3`)**:
+  - `ConfigManager.load()` now differentiates `FileNotFoundError` from corrupt JSON,
+    non-UTF-8 bytes, non-dict JSON, and `OSError`, emitting a visible warning instead of
+    silently resetting settings.
+  - `ConfigManager.save()` now preserves any corrupt existing `config.json` to a
+    collision-safe `config.json.corrupt.<timestamp>` backup before atomically swapping via
+    a temporary file in the same directory.
+- **Legacy layout migration rollback & error reporting (`Q4`)**:
+  - `BackupEngine._migrate_legacy_layout()` now uses collision-safe temporary folder
+    naming, performs best-effort rollback when the final `rename()` fails (preserving any
+    unmovable items and logging the exact recovery directory), and returns `bool` so
+    `run_backup()` increments `result.errors` and aborts instead of proceeding into a
+    half-migrated layout.
+- **Non-interactive `EOFError` and cancel retry-loop fix (`Q5`)**:
+  - `FallbackHandler.handle_no_device()` now catches `EOFError` alongside
+    `KeyboardInterrupt`, and `SmartBackup.run()` stops immediately on cancel/`Ctrl+C`/`EOF`
+    instead of re-prompting `DEFAULT_MAX_RETRIES` (3) times.
+- **Unified manifest warning logging (`Q6`)**:
+  - `ManifestManager`, `JsonManifestManager`, `SqliteManifestManager`, and
+    `manifest/factory.py` now accept an optional `BackupLogger` so corrupt-load and save
+    warnings route cleanly through `BackupLogger.warning()` instead of leaking raw
+    `sys.stderr` output; hardened JSON/SQLite corrupt-schema loading.
 
 ## [0.8.0] - 2026-11-23
 

@@ -402,41 +402,18 @@ mindmap
 | **Minor** | Hardcoded `.smartbackup_manifest.json` in `cli.py` | ✅ Fixed in v0.8.0 via `manifest/factory.py` |
 | **Wiring** | `--dry-run` mutated manifest & `--exclude` patterns weren't merged | ✅ Fixed in v0.6.1 & hardened to global zero-write `--dry-run` in v0.9.0 |
 | **Wiring** | Failed path validation exited `0` | ✅ Fixed in v0.6.3 (`errors += 1` → exit `1`) |
+| **Q1 / CRIT-2** | Silent hash failure (`""`) in `_calculate_hash()` / `_hash_file()` | ✅ Fixed (`Optional[str]` returning `None`, `FileInfo.hash_error`, `--verify` error on unreadable files) |
+| **Q2 / CRIT-1** | Naive glob-to-regex replacement in `ExclusionFilter` | ✅ Fixed (`fnmatch.translate()` + `re.error` literal-glob fallback) |
+| **Q3 / MAJ-5** | `ConfigManager.load()` silently returning `{}` & non-atomic `save()` | ✅ Fixed (visible warning on corrupt/non-dict/non-UTF-8 JSON, `.corrupt.<ts>` backup, atomic temp replace) |
+| **Q4 / MAJ-4** | `_migrate_legacy_layout()` orphaned `.migration_temp_*` on failure | ✅ Fixed (collision-safe temp dir, best-effort rollback, explicit recovery log, `run_backup()` aborts with `errors += 1`) |
+| **Q5 / Minor** | Unguarded `input()` `EOFError` & cancel retry loop in `FallbackHandler` | ✅ Fixed (`EOFError` caught, `last_cancelled` exits `SmartBackup.run()` retry loop immediately, `DEFAULT_MAX_RETRIES = 3`) |
+| **Q6 / MAJ-6** | Manifest managers bypassing `BackupLogger` via raw `sys.stderr` | ✅ Fixed (optional `logger` injected via factory/engines/CLI + hardened JSON/SQLite corrupt-load handling) |
+| **Q7 / MAJ-7a** | Duplicated device-target resolution (`cli.py` & `core/restore.py`) | ✅ Fixed (`manifest.factory.resolve_device_target()` with `candidate.is_dir()` guard) |
+| **Q8 / MAJ-7b** | Unconditional case-insensitive `ExclusionFilter` + redundant `venv_indicators[:6]` | ✅ Fixed (opt-in `case_sensitive: bool = False` documented & tested; redundant `[:6]` removed) |
 
 ### 5.1 🔴 Open Critical Bugs
 
-#### CRIT-1: Glob-to-Regex Conversion Breaks on Special Regex Characters
-
-**Location**: `src/smartbackup/core/scanner.py:33`
-
-```python
-regex = excl.replace(".", r"\.").replace("*", ".*").replace("?", ".")
-self.patterns.append(re.compile(f"^{regex}$", re.IGNORECASE))
-```
-
-**Problem**: Regex metacharacters such as `+`, `(`, `)`, `[`, `]`, `{`, `}`, `^`, `$`, `|`, and `\` are not escaped. Adding an exclusion like `--exclude "backup+(1)*"` can raise `re.error` or silently mis-match paths.
-
-**Fix**: Replace manual string substitution with `fnmatch.translate(excl)` from Python's standard library.
-
-#### CRIT-2: Silent Hash Failure Masks Data Corruption
-
-**Locations**:
-- `src/smartbackup/core/scanner.py:223-232`
-- `src/smartbackup/manifest/base.py:84-97`
-
-```python
-def _calculate_hash(self, path: Path, chunk_size: int = 65536) -> str:
-    hasher = hashlib.sha256()
-    try:
-        ...
-        return hasher.hexdigest()
-    except Exception:
-        return ""  # Silent failure: unreadable/corrupt file drops hash comparison
-```
-
-**Problem**: When a file cannot be read during hashing, `_calculate_hash()` silently returns `""`. Downstream, `has_changed()` checks `if file_info.file_hash and self.file_hash:` and falls back to skipping hash verification without logging a warning or counting an error.
-
-**Fix**: Return `Optional[str]` (`None` on failure), log a warning through `self.logger`, and surface unreadable-file errors explicitly during `--hash` / `--verify`.
+*None open — `CRIT-1` (`Q2`) and `CRIT-2` (`Q1`) have been resolved and covered by regression tests.*
 
 ### 5.2 🟠 Open Major Issues
 
@@ -469,36 +446,12 @@ Eight files construct separate `Console()` instances, while only `ui/colors.py` 
 
 **Fix**: Standardize on the shared `console` from `ui/colors.py` (with optional DI override for tests).
 
-#### MAJ-4: Migration Failure Can Leave Orphaned Temp Directory
-
-**Location**: `src/smartbackup/core/engine.py:356-407`
-
-If the final rename fails during legacy layout migration, `.migration_temp_*` can remain behind with no automated rollback.
-
-#### MAJ-5: `ConfigManager.load()` Silently Returns `{}` on All Errors
-
-**Location**: `src/smartbackup/config.py:166-174`
-
-A corrupt `config.json` or permission error silently resets loaded preferences to `{}` without warning the user; differentiate `FileNotFoundError` from `json.JSONDecodeError` / `OSError`.
-
-#### MAJ-6: Manifest Managers Bypass `BackupLogger`
-
-**Locations**: `manifest/json_manifest.py:50,88`, `manifest/sqlite_manifest.py:176,290`
-
-Both backends still write warnings directly via `print(..., file=sys.stderr)`, bypassing `--quiet` mode and per-run log capture.
-
-#### MAJ-7: Duplicated Device-Target Resolution & Case-Insensitive Linux Exclusions
-
-- **Duplicated target resolution**: `cli.py` and `core/restore.py` duplicate `Documents-Backup/<device>` target lookup; extract a shared helper in `platform/resolver.py`.
-- **Case-insensitivity (`core/scanner.py:45`)**: `ExclusionFilter` lowercases path names unconditionally across all OSes, which should be documented or made platform-aware on case-sensitive Linux filesystems.
+*(Former `MAJ-4`, `MAJ-5`, `MAJ-6`, and `MAJ-7` are resolved — see §5.0.)*
 
 ### 5.3 🟡 Open Minor Issues
 
 | Issue | Location | Description |
 |---|---|---|
-| **Hardcoded retry count** | `backup.py:90` | `max_retries = 3` should be a named constant or config option |
-| **Arbitrary list slice in venv detection** | `core/scanner.py:81` | `venv_indicators[:6]` — 7 indicators defined, only 6 checked |
-| **Unguarded `input()` on retry prompt** | `handlers.py:85` | Catches `KeyboardInterrupt` but not `EOFError` on non-TTY stdin |
 | **Naive `datetime.now()` timestamps** | `models.py`, `manifest/base.py` | Naive local datetimes can skew durations across DST transitions |
 | **Sparse `DeviceDetector` unit tests** | `tests/unit/test_devices.py` | Only 33 lines; expand mock coverage for multi-drive selection and space filtering |
 
