@@ -5,11 +5,18 @@ Config - Configuration classes and constants for SmartBackup.
 import json
 import os
 import platform
+import shutil
+import sys
+import tempfile
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from smartbackup.models import SelectionMetadata
+
+if TYPE_CHECKING:
+    from smartbackup.ui.logger import BackupLogger
 
 # Default exclusions for developer projects
 DEFAULT_EXCLUSIONS: set[str] = {
@@ -149,9 +156,17 @@ class ConfigManager:
     - macOS/Linux: ~/.config/smartbackup/config.json
     """
 
-    def __init__(self) -> None:
+    def __init__(self, logger: Optional["BackupLogger"] = None) -> None:
+        self.logger = logger
         self.config_dir = self._get_config_dir()
         self.config_file = self.config_dir / "config.json"
+
+    def _warn(self, message: str) -> None:
+        """Emit a warning via the injected logger, or stderr as fallback."""
+        if self.logger is not None:
+            self.logger.warning(message)
+        else:
+            print(f"Warning: {message}", file=sys.stderr)
 
     def _get_config_dir(self) -> Path:
         """Determines the configuration directory."""
@@ -163,32 +178,102 @@ class ConfigManager:
         else:
             return Path.home() / ".config" / "smartbackup"
 
+    def _is_corrupt_config_file(self) -> bool:
+        """Return True if config_file exists on disk but is not a valid JSON object."""
+        try:
+            with open(self.config_file, encoding="utf-8") as f:
+                data = json.load(f)
+            return not isinstance(data, dict)
+        except FileNotFoundError:
+            return False
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+            return True
+
+    def _backup_corrupt_config(self) -> Optional[Path]:
+        """Preserve a corrupt config.json before overwriting it."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = self.config_dir / f"{self.config_file.name}.corrupt.{timestamp}"
+        counter = 1
+        while backup_path.exists():
+            backup_path = (
+                self.config_dir / f"{self.config_file.name}.corrupt.{timestamp}.{counter}"
+            )
+            counter += 1
+
+        try:
+            shutil.copy2(self.config_file, backup_path)
+            self._warn(f"Preserved corrupt configuration backup at: {backup_path}")
+            return backup_path
+        except OSError as e:
+            self._warn(f"Could not back up corrupt configuration {self.config_file}: {e}")
+            return None
+
     def load(self) -> dict:
-        """Loads the configuration."""
-        if self.config_file.exists():
-            try:
-                with open(self.config_file, encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                return {}
-        return {}
+        """Loads the configuration, warning visibly on corrupt or unreadable files."""
+        try:
+            with open(self.config_file, encoding="utf-8") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            return {}
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
+            self._warn(f"Failed to load configuration from {self.config_file}: {e}")
+            return {}
+
+        if not isinstance(data, dict):
+            self._warn(
+                f"Invalid configuration in {self.config_file}: "
+                f"expected JSON object, got {type(data).__name__}"
+            )
+            return {}
+
+        return data
 
     def save(self, config: dict) -> None:
-        """Saves the configuration."""
+        """Atomically saves the configuration, preserving any corrupt existing file first."""
         self.config_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.config_file, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2, default=str)
+        if self._is_corrupt_config_file():
+            self._backup_corrupt_config()
+
+        temp_path: Optional[Path] = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.config_dir,
+                prefix="config.",
+                suffix=".tmp",
+                delete=False,
+            ) as f:
+                temp_path = Path(f.name)
+                json.dump(config, f, indent=2, default=str)
+                f.flush()
+            temp_path.replace(self.config_file)
+        except Exception:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise
+
+    @staticmethod
+    def _extract_exclusions(config: dict) -> set[str]:
+        """Safely extract custom exclusions list from loaded config."""
+        raw = config.get("exclusions")
+        if isinstance(raw, list):
+            return {str(item) for item in raw}
+        return set()
 
     def get_exclusions(self) -> set[str]:
         """Loads custom exclusions."""
         config = self.load()
-        custom = set(config.get("exclusions", []))
+        custom = self._extract_exclusions(config)
         return DEFAULT_EXCLUSIONS | custom
 
     def add_exclusion(self, pattern: str) -> None:
         """Adds an exclusion."""
         config = self.load()
-        exclusions = set(config.get("exclusions", []))
+        exclusions = self._extract_exclusions(config)
         exclusions.add(pattern)
         config["exclusions"] = list(exclusions)
         self.save(config)
@@ -196,7 +281,7 @@ class ConfigManager:
     def remove_exclusion(self, pattern: str) -> None:
         """Removes an exclusion pattern (no-op when it is absent)."""
         config = self.load()
-        exclusions = set(config.get("exclusions", []))
+        exclusions = self._extract_exclusions(config)
         exclusions.discard(pattern)
         config["exclusions"] = list(exclusions)
         self.save(config)
